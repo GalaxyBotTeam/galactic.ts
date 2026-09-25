@@ -3,7 +3,7 @@ import { BridgeClusterConnection } from "./BridgeClusterConnection";
 import { ClusterCalculator } from "../domain/ClusterCalculator";
 import { TypedEmitter } from "../general/TypedEmitter";
 import { BridgeMessage } from "../protocol/bridge";
-import { assertNever } from "../protocol/shared";
+import { ignoreUnknownMessage } from "../protocol/shared";
 import type { BridgeEvents } from "./Bridge";
 
 export type BridgeMessageRouterDeps = {
@@ -59,7 +59,7 @@ export function createBridgeMessageHandler(connection: BridgeInstanceConnection,
                 // Bridge only ever SENDS these to instances, never receives them back.
                 return;
             default:
-                assertNever(message, 'BridgeMessageRouter');
+                ignoreUnknownMessage(message, 'BridgeMessageRouter');
         }
     };
 }

@@ -6,7 +6,7 @@ import { ProcessSpawner } from "./ProcessSpawner";
 import { ChildProcessLifecycle } from "./ChildProcessLifecycle";
 import { SpawnParams } from "../protocol/processEnv";
 import { ProcessMessage, ProcessRequest } from "../protocol/process";
-import { assertNever, SerializedError } from "../protocol/shared";
+import { ignoreUnknownMessage, rejectUnknownRequest, SerializedError } from "../protocol/shared";
 
 export abstract class BotInstance {
 
@@ -86,7 +86,7 @@ export abstract class BotInstance {
                 return;
             }
             default:
-                assertNever(message, 'BotInstance.onMessage');
+                ignoreUnknownMessage(message, 'BotInstance.onMessage');
         }
     }
 
@@ -109,7 +109,7 @@ export abstract class BotInstance {
                 // These are requests a parent SENDS to a child, never receives from one.
                 return Promise.reject(new Error(`BotInstance does not receive incoming ${message.type} requests`));
             default:
-                return assertNever(message, 'BotInstance.onRequest');
+                return rejectUnknownRequest(message, 'BotInstance.onRequest');
         }
     }
 

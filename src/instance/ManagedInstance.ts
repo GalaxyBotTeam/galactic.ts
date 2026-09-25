@@ -7,7 +7,7 @@ import { GatewayIntentsString } from "discord.js";
 import { ShardingUtil } from "../domain/ShardingUtil";
 import { ManagedInstanceConnectionStatus, createManagedInstanceState } from "../domain/ManagedInstanceState";
 import { BridgeMessage, BridgeRequest, SelfCheckResponse } from "../protocol/bridge";
-import { assertNever } from "../protocol/shared";
+import { ignoreUnknownMessage, rejectUnknownRequest } from "../protocol/shared";
 
 export { ManagedInstanceConnectionStatus };
 
@@ -176,7 +176,7 @@ export class ManagedInstance extends BotInstance {
                 // ManagedInstance only ever SENDS these to the bridge, never receives them back.
                 return;
             default:
-                assertNever(message, 'ManagedInstance.onBridgeMessage');
+                ignoreUnknownMessage(message, 'ManagedInstance.onBridgeMessage');
         }
     }
 
@@ -243,7 +243,7 @@ export class ManagedInstance extends BotInstance {
                 // ManagedInstance only ever SENDS SELF_CHECK to the bridge, never receives it.
                 return Promise.reject(new Error('ManagedInstance does not handle incoming SELF_CHECK requests'));
             default:
-                return assertNever(message, 'ManagedInstance.onBridgeRequest');
+                return rejectUnknownRequest(message, 'ManagedInstance.onBridgeRequest');
         }
     }
 

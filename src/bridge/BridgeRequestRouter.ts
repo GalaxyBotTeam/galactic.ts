@@ -3,7 +3,7 @@ import { ClusterCalculator } from "../domain/ClusterCalculator";
 import { ShardingUtil } from "../domain/ShardingUtil";
 import { BridgeClusterConnectionStatus } from "../domain/BridgeClusterState";
 import { BridgeRequest, SelfCheckResponse } from "../protocol/bridge";
-import { assertNever } from "../protocol/shared";
+import { rejectUnknownRequest } from "../protocol/shared";
 
 export type BridgeRequestRouterDeps = {
     calculator: ClusterCalculator;
@@ -53,7 +53,7 @@ export function createBridgeRequestHandler(connection: BridgeInstanceConnection,
                 // Bridge only ever SENDS this to instances, never receives it as a request.
                 return Promise.reject(new Error('Bridge does not handle incoming CLUSTER_HEARTBEAT requests'));
             default:
-                return assertNever(message, 'BridgeRequestRouter');
+                return rejectUnknownRequest(message, 'BridgeRequestRouter');
         }
     };
 }

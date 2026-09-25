@@ -75,4 +75,12 @@ describe('BridgeRequestRouter', () => {
         const { handler } = setup();
         await expect(handler({ type: 'CLUSTER_HEARTBEAT', data: { clusterID: 1 } }, 5000)).rejects.toThrow();
     });
+
+    it('a request type this version does not know is answered with a rejection, not thrown', async () => {
+        const { handler } = setup();
+
+        let result: unknown;
+        expect(() => { result = handler({ type: 'NOT_REAL' } as any, 5000); }).not.toThrow();
+        await expect(result).rejects.toThrow(/NOT_REAL/);
+    });
 });

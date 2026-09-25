@@ -86,4 +86,15 @@ describe('BridgeMessageRouter', () => {
         expect(() => handler({ type: 'CLUSTER_RECLUSTER', data: { clusterID: 1 } })).not.toThrow();
         expect(() => handler({ type: 'INSTANCE_STOP_ACK' })).not.toThrow();
     });
+
+    it('a message type this version does not know (peer on another version) is dropped, not thrown', () => {
+        const cluster = fakeCluster(1);
+        const { handler } = setup(cluster);
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        expect(() => handler({ type: 'INSTANCE_STOPPED' } as any)).not.toThrow();
+
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('INSTANCE_STOPPED'));
+        warn.mockRestore();
+    });
 });

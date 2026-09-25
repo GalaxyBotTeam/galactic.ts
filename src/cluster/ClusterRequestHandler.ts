@@ -1,7 +1,7 @@
 import { Client } from 'discord.js';
 import os from 'node:os';
 import { ProcessRequest } from '../protocol/process';
-import { assertNever, HeartbeatResponse, ShardPing } from '../protocol/shared';
+import { HeartbeatResponse, rejectUnknownRequest, ShardPing } from '../protocol/shared';
 
 export type CustomRequestHandler = (data: unknown, resolve: (data: unknown) => void, reject: (error: unknown) => void, timeout: number) => void;
 
@@ -96,7 +96,7 @@ export function createClusterRequestHandler<T extends Client>(deps: ClusterReque
             case 'REDIRECT_REQUEST_TO_GUILD':
                 return Promise.reject(new Error('Cluster does not handle incoming REDIRECT_REQUEST_TO_GUILD requests'));
             default:
-                return assertNever(message, 'ClusterRequestHandler');
+                return rejectUnknownRequest(message, 'ClusterRequestHandler');
         }
     };
 }

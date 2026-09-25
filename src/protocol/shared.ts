@@ -52,3 +52,24 @@ export type HeartbeatResponse = {
 export function assertNever(x: never, context: string): never {
     throw new Error(`Unhandled protocol case in ${context}: ${JSON.stringify(x)}`);
 }
+
+/**
+ * Runtime-safe exhaustiveness pins for the message/request routers. They give the same
+ * compile-time guarantee as `assertNever` (the `default` branch only type-checks while every
+ * union member has a `case`), but a type that only exists at runtime - a peer running another
+ * version of this package during a rolling deploy - is logged and dropped (messages) or
+ * answered with a rejection (requests) instead of throwing inside a transport's event
+ * emitter and crashing the whole process.
+ */
+export function ignoreUnknownMessage(x: never, context: string): void {
+    console.warn(`[galactic] ${context}: ignoring unknown message type ${describeUnknown(x)}`);
+}
+
+export function rejectUnknownRequest(x: never, context: string): Promise<never> {
+    return Promise.reject(new Error(`${context}: unknown request type ${describeUnknown(x)}`));
+}
+
+function describeUnknown(x: unknown): string {
+    const type = (x as { type?: unknown } | null)?.type;
+    return typeof type === 'string' ? `'${type}'` : JSON.stringify(x);
+}
