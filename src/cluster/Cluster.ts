@@ -3,6 +3,7 @@ import { EventManager } from "../transport/EventManager";
 import { ChildProcessTransport } from "../transport/ChildProcessTransport";
 import { ProcessMessage, ProcessRequest } from "../protocol/process";
 import { serializeError } from "../protocol/shared";
+import { decodeEnv } from "../protocol/processEnv";
 import { createClusterRequestHandler, CustomRequestHandler } from "./ClusterRequestHandler";
 
 export class Cluster<T extends Client> {
@@ -59,25 +60,10 @@ export class Cluster<T extends Client> {
         process.once('SIGINT', gracefulExit);
     }
 
+    /** Builds the Cluster for this child process from the env ProcessSpawner set (see protocol/processEnv.ts). */
     static initial<T extends Client>(): Cluster<T> {
-        const args = process.env;
-
-        if (args.SHARD_LIST == undefined || args.INSTANCE_ID == undefined || args.TOTAL_SHARDS == undefined || args.TOKEN == undefined || args.INTENTS == undefined || args.CLUSTER_ID == undefined) {
-            throw new Error("Missing required environment variables");
-        }
-
-        const shardList = args.SHARD_LIST.split(',').map(Number);
-
-        const totalShards = Number(args.TOTAL_SHARDS);
-
-        const instanceID = Number(args.INSTANCE_ID);
-        const clusterID = Number(args.CLUSTER_ID);
-
-        const token = args.TOKEN;
-
-        const intents = args.INTENTS.split(',').map(i => i.trim()) as GatewayIntentsString[];
-
-        return new Cluster<T>(instanceID, clusterID, shardList, totalShards, token, intents);
+        const params = decodeEnv(process.env);
+        return new Cluster<T>(params.instanceID, params.clusterID, params.shardList, params.totalShards, params.token, params.intents);
     }
 
     /** Resolves once the message was handed to the parent; rejects if the IPC channel is gone. */
