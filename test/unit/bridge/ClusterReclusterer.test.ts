@@ -79,4 +79,26 @@ describe('ClusterReclusterer', () => {
         expect(calculator.clusterList[0].connection).toBe(to);
         expect(calculator.clusterList[0].oldConnection).toBe(from);
     });
+
+    it('moveCluster rejects a cluster that is not CONNECTED with a descriptive error', () => {
+        const { calculator, reclusterer } = setup(1, 1);
+        const from = fakeInstance(1);
+        const to = fakeInstance(2);
+        calculator.clusterList[0].setConnection(from);
+        calculator.clusterList[0].markStarting();
+
+        expect(() => reclusterer.moveCluster(to, calculator.clusterList[0])).toThrow(/cannot be moved while starting/);
+        expect(calculator.clusterList[0].connection).toBe(from);
+    });
+
+    it('moveCluster rejects moving a cluster onto the instance it already runs on', () => {
+        const { calculator, reclusterer } = setup(1, 1);
+        const from = fakeInstance(1);
+        calculator.clusterList[0].setConnection(from);
+        calculator.clusterList[0].markStarting();
+        calculator.clusterList[0].markConnected();
+
+        expect(() => reclusterer.moveCluster(from, calculator.clusterList[0])).toThrow(/already runs on instance 1/);
+        expect(calculator.clusterList[0].oldConnection).toBeUndefined();
+    });
 });

@@ -1,5 +1,6 @@
 import { GatewayIntentsString } from "discord.js";
 import { ClusterCalculator } from "../domain/ClusterCalculator";
+import { BridgeClusterConnectionStatus } from "../domain/BridgeClusterState";
 import { BridgeClusterConnection } from "./BridgeClusterConnection";
 import { BridgeInstanceConnection } from "./BridgeInstanceConnection";
 import { TypedEmitter } from "../general/TypedEmitter";
@@ -61,7 +62,14 @@ export class ClusterReclusterer {
         this.createCluster(to, cluster, true);
     }
 
+    /** Public entry point (Bridge.moveCluster) - validates up front so callers get a descriptive error instead of an InvalidTransitionError. */
     moveCluster(bridgeInstanceConnection: BridgeInstanceConnection, bridgeClusterConnection: BridgeClusterConnection): void {
+        if (bridgeClusterConnection.connectionStatus !== BridgeClusterConnectionStatus.CONNECTED) {
+            throw new Error(`Cluster ${bridgeClusterConnection.clusterID} cannot be moved while ${bridgeClusterConnection.connectionStatus} - only CONNECTED clusters can be reclustered.`);
+        }
+        if (bridgeClusterConnection.connection?.instanceID === bridgeInstanceConnection.instanceID) {
+            throw new Error(`Cluster ${bridgeClusterConnection.clusterID} already runs on instance ${bridgeInstanceConnection.instanceID}.`);
+        }
         this.steal(bridgeClusterConnection, bridgeInstanceConnection);
     }
 }
