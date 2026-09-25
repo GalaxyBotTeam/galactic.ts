@@ -1,5 +1,5 @@
 import { BridgeInstanceConnection } from "./BridgeInstanceConnection";
-import { ClusterCalculator } from "../domain/ClusterCalculator";
+import { ClusterCalculator } from "./ClusterCalculator";
 import { ShardingUtil } from "../domain/ShardingUtil";
 import { BridgeClusterConnectionStatus } from "../domain/BridgeClusterState";
 import { BridgeRequest, SelfCheckResponse } from "../protocol/bridge";

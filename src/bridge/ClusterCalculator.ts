@@ -1,7 +1,7 @@
-import {BridgeClusterConnection} from "../bridge/BridgeClusterConnection";
-import {BridgeClusterConnectionStatus} from "./BridgeClusterState";
-import {BridgeInstanceConnection} from "../bridge/BridgeInstanceConnection";
-import {BridgeInstanceConnectionStatus} from "./BridgeInstanceState";
+import {BridgeClusterConnection} from "./BridgeClusterConnection";
+import {BridgeClusterConnectionStatus} from "../domain/BridgeClusterState";
+import {BridgeInstanceConnection} from "./BridgeInstanceConnection";
+import {BridgeInstanceConnectionStatus} from "../domain/BridgeInstanceState";
 
 /**
  * Manages the calculation and distribution of clusters for a Discord bot sharding system.

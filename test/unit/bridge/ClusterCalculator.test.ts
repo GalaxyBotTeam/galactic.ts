@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ClusterCalculator } from '../../../src/domain/ClusterCalculator';
+import { ClusterCalculator } from '../../../src/bridge/ClusterCalculator';
 import { BridgeInstanceConnection } from '../../../src/bridge/BridgeInstanceConnection';
 import { BridgeClusterConnectionStatus } from '../../../src/bridge/BridgeClusterConnection';
 

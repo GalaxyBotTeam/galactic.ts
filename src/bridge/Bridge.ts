@@ -3,7 +3,7 @@ import { Server } from "net-ipc";
 import { BridgeInstanceConnection } from "./BridgeInstanceConnection";
 import { BridgeInstanceConnectionStatus } from "../domain/BridgeInstanceState";
 import { BridgeClusterConnectionStatus } from "../domain/BridgeClusterState";
-import { ClusterCalculator } from "../domain/ClusterCalculator";
+import { ClusterCalculator } from "./ClusterCalculator";
 import { BridgeClusterConnection } from "./BridgeClusterConnection";
 import { HeartbeatResponse } from "../protocol/shared";
 import { TypedEmitter } from "../general/TypedEmitter";

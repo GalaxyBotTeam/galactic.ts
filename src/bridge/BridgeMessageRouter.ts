@@ -1,6 +1,6 @@
 import { BridgeInstanceConnection } from "./BridgeInstanceConnection";
 import { BridgeClusterConnection } from "./BridgeClusterConnection";
-import { ClusterCalculator } from "../domain/ClusterCalculator";
+import { ClusterCalculator } from "./ClusterCalculator";
 import { TypedEmitter } from "../general/TypedEmitter";
 import { BridgeMessage } from "../protocol/bridge";
 import { ignoreUnknownMessage } from "../protocol/shared";

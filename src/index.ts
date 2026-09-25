@@ -1,4 +1,4 @@
-export * from './domain/ClusterCalculator';
+export * from './bridge/ClusterCalculator';
 export * from './domain/ShardingUtil';
 export { BridgeClusterConnectionStatus } from './domain/BridgeClusterState';
 export { BridgeInstanceConnectionStatus } from './domain/BridgeInstanceState';

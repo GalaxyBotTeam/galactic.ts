@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ClusterCalculator } from '../../../src/domain/ClusterCalculator';
+import { ClusterCalculator } from '../../../src/bridge/ClusterCalculator';
 import { ClusterReclusterer } from '../../../src/bridge/ClusterReclusterer';
 import { TypedEmitter } from '../../../src/general/TypedEmitter';
 import type { BridgeEvents } from '../../../src/bridge/Bridge';

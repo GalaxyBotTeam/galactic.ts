@@ -1,4 +1,4 @@
-import { ClusterCalculator } from "../domain/ClusterCalculator";
+import { ClusterCalculator } from "./ClusterCalculator";
 import { ClusterReclusterer } from "./ClusterReclusterer";
 import { BridgeInstanceConnection } from "./BridgeInstanceConnection";
 import { BridgeClusterConnectionStatus } from "../domain/BridgeClusterState";

@@ -1,5 +1,5 @@
 import { GatewayIntentsString } from "discord.js";
-import { ClusterCalculator } from "../domain/ClusterCalculator";
+import { ClusterCalculator } from "./ClusterCalculator";
 import { BridgeClusterConnectionStatus } from "../domain/BridgeClusterState";
 import { BridgeClusterConnection } from "./BridgeClusterConnection";
 import { BridgeInstanceConnection } from "./BridgeInstanceConnection";
