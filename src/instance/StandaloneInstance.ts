@@ -4,7 +4,9 @@ import { GatewayIntentsString } from "discord.js";
 
 const STANDALONE_INSTANCE_ID = 1;
 const RESTART_BACKOFF_BASE_MS = 1000;
-const RESTART_MAX_ATTEMPTS = 5;
+const RESTART_BACKOFF_MAX_MS = 60 * 1000;
+/** Consecutive crashes after which every further restart also emits an ERROR event. */
+const CRASH_LOOP_THRESHOLD = 5;
 
 export class StandaloneInstance extends BotInstance {
     private readonly totalClusters: number;
@@ -15,6 +17,9 @@ export class StandaloneInstance extends BotInstance {
 
     /** Consecutive crash-restart attempts per cluster id - reset once a cluster reports ready. */
     private readonly restartAttempts: Map<number, number> = new Map();
+
+    /** Pending backoff timers per cluster id - cleared on shutdown so nothing respawns afterwards. */
+    private readonly restartTimers: Map<number, ReturnType<typeof setTimeout>> = new Map();
 
     constructor(entryPoint: string, shardsPerCluster: number, totalClusters: number, token: string, intents: GatewayIntentsString[], execArgv?: string[]) {
         super(entryPoint, execArgv);
@@ -53,17 +58,28 @@ export class StandaloneInstance extends BotInstance {
         const attempts = (this.restartAttempts.get(clusterProcess.id) ?? 0) + 1;
         this.restartAttempts.set(clusterProcess.id, attempts);
 
-        if (attempts > RESTART_MAX_ATTEMPTS) {
-            this.events.emit('ERROR', `Cluster ${clusterProcess.id} crash-looped ${attempts} times (${reason}) - giving up, not restarting.`);
-            return;
+        // Never give up: a cluster that stays down means its shards are offline until someone
+        // intervenes. Back off exponentially (capped) and flag the crash loop instead.
+        const delay = Math.min(RESTART_BACKOFF_BASE_MS * Math.pow(2, attempts - 1), RESTART_BACKOFF_MAX_MS);
+        if (attempts > CRASH_LOOP_THRESHOLD) {
+            this.events.emit('ERROR', `Cluster ${clusterProcess.id} is crash-looping (${attempts} consecutive exits, last: ${reason}) - restarting in ${delay}ms.`);
         }
 
-        const delay = RESTART_BACKOFF_BASE_MS * Math.pow(2, attempts - 1);
-        setTimeout(() => this.restartProcess(clusterProcess), delay);
+        const previous = this.restartTimers.get(clusterProcess.id);
+        if (previous) clearTimeout(previous);
+
+        const timer = setTimeout(() => {
+            this.restartTimers.delete(clusterProcess.id);
+            if (this._shuttingDown) return;
+            this.restartProcess(clusterProcess);
+        }, delay);
+        this.restartTimers.set(clusterProcess.id, timer);
     }
 
     public async shutdown(): Promise<void> {
         this._shuttingDown = true;
+        for (const timer of this.restartTimers.values()) clearTimeout(timer);
+        this.restartTimers.clear();
         await Promise.all(Array.from(this.clusters.values()).map(c => this.killProcess(c, 'Graceful shutdown')));
     }
 
