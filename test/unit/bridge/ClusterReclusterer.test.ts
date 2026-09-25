@@ -5,7 +5,7 @@ import { TypedEmitter } from '../../../src/general/TypedEmitter';
 import type { BridgeEvents } from '../../../src/bridge/Bridge';
 
 function fakeInstance(id: number) {
-    return { instanceID: id, dev: false, eventManager: { send: vi.fn() } } as any;
+    return { instanceID: id, dev: false, eventManager: { send: vi.fn().mockResolvedValue(undefined) } } as any;
 }
 
 function setup(clusterCount: number, shardsPerCluster: number) {
@@ -35,6 +35,21 @@ describe('ClusterReclusterer', () => {
         reclusterer.createCluster(instance, calculator.clusterList[0]);
 
         expect(listener).toHaveBeenCalledWith(calculator.clusterList[0], instance);
+    });
+
+    it('createCluster reports a failed CLUSTER_CREATE send as ERROR instead of an unhandled rejection', async () => {
+        const { calculator, reclusterer, events } = setup(1, 1);
+        const instance = fakeInstance(1);
+        instance.eventManager.send.mockRejectedValue(new Error('Connection is closed'));
+        const errors: string[] = [];
+        events.on('ERROR', (e) => errors.push(e));
+
+        reclusterer.createCluster(instance, calculator.clusterList[0]);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toMatch(/CLUSTER_CREATE.*cluster 0.*instance 1/);
     });
 
     it('checkRecluster steals a cluster from the busiest instance onto the least busy one when imbalanced', () => {

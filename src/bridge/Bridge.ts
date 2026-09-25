@@ -58,7 +58,9 @@ export class Bridge {
     }
 
     public start(): void {
-        this.bridgeServer.start();
+        this.bridgeServer.start().catch((err) => {
+            this.events.emit('ERROR', `Bridge server failed to start on port ${this.port}: ${err}`);
+        });
         this.scheduler.start();
     }
 
@@ -66,7 +68,11 @@ export class Bridge {
         connection.eventManager.onMessage(createBridgeMessageHandler(connection, {
             calculator: this.clusterCalculator,
             events: this.events,
-            onInstanceStop: (c) => { this.stopInstance(c); },
+            onInstanceStop: (c) => {
+                this.stopInstance(c).catch((err) => {
+                    this.events.emit('ERROR', `Stopping instance ${c.instanceID} failed: ${err}`);
+                });
+            },
         }));
         connection.eventManager.onRequest(createBridgeRequestHandler(connection, {
             calculator: this.clusterCalculator,
@@ -117,7 +123,9 @@ export class Bridge {
                 cluster.addMissedHeartbeat();
 
                 if (cluster.missedHeartbeats > MAX_MISSED_HEARTBEATS && !cluster.connection?.dev && !this.ignoreHeartbeatMissed) {
-                    cluster.connection?.eventManager.send({ type: 'CLUSTER_STOP', data: { id: cluster.clusterID } });
+                    cluster.connection?.eventManager.send({ type: 'CLUSTER_STOP', data: { id: cluster.clusterID } }).catch((sendErr) => {
+                        this.events.emit('ERROR', `Failed to send CLUSTER_STOP for cluster ${cluster.clusterID} after missed heartbeats: ${sendErr}`);
+                    });
                     cluster.markDisconnected();
                     cluster.resetMissedHeartbeats();
                 }

@@ -34,7 +34,10 @@ export function createBridgeMessageHandler(connection: BridgeInstanceConnection,
                     deps.events.emit('CLUSTER_READY', cluster, message.data.guilds || 0, message.data.members || 0, readyDuration);
                     cluster.markConnected();
                     if (cluster.oldConnection) {
-                        cluster.oldConnection.eventManager.send({ type: 'CLUSTER_STOP', data: { id: cluster.clusterID } });
+                        const oldConnection = cluster.oldConnection;
+                        oldConnection.eventManager.send({ type: 'CLUSTER_STOP', data: { id: cluster.clusterID } }).catch((err) => {
+                            deps.events.emit('ERROR', `Failed to send CLUSTER_STOP for reclustered cluster ${cluster.clusterID} to instance ${oldConnection.instanceID}: ${err}`);
+                        });
                         cluster.oldConnection = undefined;
                     }
                 }

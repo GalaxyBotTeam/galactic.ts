@@ -95,7 +95,9 @@ export abstract class BotInstance {
             case 'REDIRECT_MESSAGE_TO_GUILD': {
                 const shardID = ShardingUtil.getShardIDForGuild(message.guildID, clusterProcess.totalShards);
                 if (clusterProcess.shardList.includes(shardID)) {
-                    clusterProcess.eventManager.send({ type: 'CUSTOM', data: message.data });
+                    clusterProcess.eventManager.send({ type: 'CUSTOM', data: message.data }).catch((err) => {
+                        this.events.emit('ERROR', `Failed to deliver guild message to cluster ${clusterProcess.id}: ${err}`);
+                    });
                 } else {
                     this.forwardGuildMessageElsewhere(message.guildID, message.data);
                 }

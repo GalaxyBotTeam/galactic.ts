@@ -42,7 +42,7 @@ describe('BridgeMessageRouter', () => {
     it('CLUSTER_READY marks CONNECTED, emits CLUSTER_READY, and stops the old connection if any', () => {
         const cluster = fakeCluster(1);
         cluster.spawnedAt = Date.now() - 10;
-        const oldConnection = { eventManager: { send: vi.fn() } };
+        const oldConnection = { eventManager: { send: vi.fn().mockResolvedValue(undefined) } };
         cluster.oldConnection = oldConnection;
         const { handler, events } = setup(cluster);
         const listener = vi.fn();
@@ -54,6 +54,22 @@ describe('BridgeMessageRouter', () => {
         expect(listener).toHaveBeenCalledWith(cluster, 5, 10, expect.any(Number));
         expect(oldConnection.eventManager.send).toHaveBeenCalledWith({ type: 'CLUSTER_STOP', data: { id: 1 } });
         expect(cluster.oldConnection).toBeUndefined();
+    });
+
+    it('CLUSTER_READY reports a failed CLUSTER_STOP to the old connection as ERROR instead of an unhandled rejection', async () => {
+        const cluster = fakeCluster(1);
+        cluster.spawnedAt = Date.now();
+        cluster.oldConnection = { instanceID: 9, eventManager: { send: vi.fn().mockRejectedValue(new Error('closed')) } };
+        const { handler, events } = setup(cluster);
+        const errors: string[] = [];
+        events.on('ERROR', (e) => errors.push(e));
+
+        handler({ type: 'CLUSTER_READY', data: { id: 1 } });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toMatch(/instance 9.*closed/);
     });
 
     it('CLUSTER_STOPPED emits CLUSTER_STOPPED and clears the connection', () => {

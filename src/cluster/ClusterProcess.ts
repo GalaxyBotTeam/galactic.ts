@@ -46,8 +46,9 @@ export class ClusterProcess {
         this.state.transition('stopped');
     }
 
-    public sendMessage(data: unknown) {
-        this.eventManager.send({
+    /** Resolves once the message was handed to the IPC channel; rejects if the child is gone. */
+    public sendMessage(data: unknown): Promise<void> {
+        return this.eventManager.send({
             type: 'CUSTOM',
             data: data,
         });

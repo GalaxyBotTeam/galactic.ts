@@ -26,6 +26,8 @@ export class ClusterReclusterer {
             cluster.oldConnection?.eventManager.send({
                 type: 'CLUSTER_RECLUSTER',
                 data: { clusterID: cluster.clusterID },
+            }).catch((err) => {
+                this.events.emit('ERROR', `Failed to notify old instance about reclustering of cluster ${cluster.clusterID}: ${err}`);
             });
         }
 
@@ -40,6 +42,9 @@ export class ClusterReclusterer {
                 token: this.token,
                 intents: this.intents,
             },
+        }).catch((err) => {
+            // The connection will drop and its disconnect handler frees the cluster again.
+            this.events.emit('ERROR', `Failed to send CLUSTER_CREATE for cluster ${cluster.clusterID} to instance ${connection.instanceID}: ${err}`);
         });
     }
 

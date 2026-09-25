@@ -80,8 +80,9 @@ export class Cluster<T extends Client> {
         return new Cluster<T>(instanceID, clusterID, shardList, totalShards, token, intents);
     }
 
-    triggerReady(guilds: number, members: number) {
-        this.eventManager.send({
+    /** Resolves once the message was handed to the parent; rejects if the IPC channel is gone. */
+    triggerReady(guilds: number, members: number): Promise<void> {
+        const sent = this.eventManager.send({
             type: 'CLUSTER_READY',
             id: this.clusterID,
             guilds: guilds,
@@ -91,10 +92,11 @@ export class Cluster<T extends Client> {
         if(this.eventMap?.CLUSTER_READY) {
             this.eventMap?.CLUSTER_READY();
         }
+        return sent;
     }
 
-    triggerError(e: unknown) {
-        this.eventManager.send({
+    triggerError(e: unknown): Promise<void> {
+        return this.eventManager.send({
             type: 'CLUSTER_ERROR',
             id: this.clusterID,
             error: serializeError(e),
@@ -123,8 +125,8 @@ export class Cluster<T extends Client> {
         this.eventMap[event] = listener as any;
     }
 
-    public sendMessage(data: unknown) {
-        this.eventManager.send({
+    public sendMessage(data: unknown): Promise<void> {
+        return this.eventManager.send({
             type: 'CUSTOM',
             data: data,
         });
@@ -150,8 +152,8 @@ export class Cluster<T extends Client> {
     }
 
 
-    public sendMessageToClusterOfGuild(guildID: string, message: unknown): void {
-        this.eventManager.send({
+    public sendMessageToClusterOfGuild(guildID: string, message: unknown): Promise<void> {
+        return this.eventManager.send({
             type: 'REDIRECT_MESSAGE_TO_GUILD',
             guildID: guildID,
             data: message

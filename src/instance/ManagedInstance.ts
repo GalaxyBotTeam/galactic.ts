@@ -93,7 +93,9 @@ export class ManagedInstance extends BotInstance {
                     this.events.emit('BRIDGE_CONNECTION_ESTABLISHED');
                 }
             });
-        })
+        }).catch((err) => {
+            this.events.emit('ERROR', `Could not connect to bridge ${this.host}:${this.port}: ${err}`);
+        });
     }
 
     private markConnected(): void {
