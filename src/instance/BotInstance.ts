@@ -150,6 +150,18 @@ export abstract class BotInstance {
         this.events.on(event as keyof BotInstanceEvents, listener as BotInstanceEvents[keyof BotInstanceEvents]);
     }
 
+    public off<K extends keyof AllBotInstanceListeners>(event: K, listener: AllBotInstanceListeners[K]): void {
+        if (event === 'message') {
+            if (this.messageListener === listener) this.messageListener = undefined;
+            return;
+        }
+        if (event === 'request') {
+            if (this.requestListener === listener) this.requestListener = undefined;
+            return;
+        }
+        this.events.off(event as keyof BotInstanceEvents, listener as BotInstanceEvents[keyof BotInstanceEvents]);
+    }
+
     public sendRequestToClusterOfGuild(guildID: string, message: unknown, timeout = 5000): Promise<unknown> {
         return new Promise((resolve, reject) => {
             for (const client of this.clusters.values()) {

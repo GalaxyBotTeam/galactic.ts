@@ -58,3 +58,29 @@ describe('BotInstance.onMessage CLUSTER_READY', () => {
         expect(cp.status).toBe('running');
     });
 });
+
+describe('BotInstance.off', () => {
+    it('removes a CUSTOM message listener', () => {
+        const instance = new TestInstance('entry.js');
+        const cp = realClusterProcess();
+        const listener = vi.fn();
+        instance.on('message', listener);
+
+        instance.off('message', listener);
+        instance.callOnMessage(cp, { type: 'CUSTOM', data: 'hi' });
+
+        expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('removes an event listener', () => {
+        const instance = new TestInstance('entry.js');
+        const cp = realClusterProcess();
+        const listener = vi.fn();
+        instance.on('CLUSTER_READY', listener);
+
+        instance.off('CLUSTER_READY', listener);
+        instance.callOnMessage(cp, { type: 'CLUSTER_READY', id: 1, guilds: 0, members: 0 });
+
+        expect(listener).not.toHaveBeenCalled();
+    });
+});

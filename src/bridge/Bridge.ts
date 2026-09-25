@@ -134,6 +134,10 @@ export class Bridge {
         this.events.on(event, listener);
     }
 
+    public off<K extends keyof BridgeEvents>(event: K, listener: BridgeEvents[K]): void {
+        this.events.off(event, listener);
+    }
+
     public getClusters(): BridgeClusterConnection[] {
         return this.clusterCalculator.clusterList;
     }

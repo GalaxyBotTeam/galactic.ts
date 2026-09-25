@@ -33,4 +33,18 @@ describe('TypedEmitter', () => {
         expect(a).toHaveBeenCalledWith('world');
         expect(b).toHaveBeenCalledWith('world');
     });
+
+    it('off removes exactly the given listener', () => {
+        const emitter = new TypedEmitter<Events>();
+        const a = vi.fn();
+        const b = vi.fn();
+        emitter.on('greet', a);
+        emitter.on('greet', b);
+
+        emitter.off('greet', a);
+        emitter.emit('greet', 'world');
+
+        expect(a).not.toHaveBeenCalled();
+        expect(b).toHaveBeenCalledWith('world');
+    });
 });
