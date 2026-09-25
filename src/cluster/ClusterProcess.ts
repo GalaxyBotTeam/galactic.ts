@@ -37,6 +37,7 @@ export class ClusterProcess {
     }
 
     markRunning(): void {
+        if (this.state.current === 'running') return;
         this.state.transition('running');
     }
 

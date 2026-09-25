@@ -60,6 +60,10 @@ export abstract class BotInstance {
     private onMessage(clusterProcess: ClusterProcess, message: ProcessMessage): void {
         switch (message.type) {
             case 'CLUSTER_READY':
+                // A child can report ready while we are already tearing it down (killProcess
+                // marks it stopped, then waits up to SELF_DESTRUCT_TIMEOUT_MS). Ignore it -
+                // the cluster is going away and must not be advertised as running.
+                if (clusterProcess.status === 'stopped') return;
                 clusterProcess.markRunning();
                 this.events.emit('CLUSTER_READY', clusterProcess);
                 this.setClusterReady(clusterProcess, message.guilds || 0, message.members || 0);
