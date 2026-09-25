@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createClusterRequestHandler, sampleHeartbeat } from '../../../src/cluster/ClusterRequestHandler';
+import { createClusterRequestHandler, sampleHeartbeat, SELF_DESTRUCT_EXIT_GRACE_MS } from '../../../src/cluster/ClusterRequestHandler';
 
 function fakeClient(overrides: Partial<any> = {}) {
     return {
@@ -65,21 +65,26 @@ describe('createClusterRequestHandler', () => {
         expect(result).toBe(42);
     });
 
-    it('SELF_DESTRUCT calls the selfDestruct dependency', async () => {
-        const selfDestruct = vi.fn().mockResolvedValue(undefined);
-        const handler = createClusterRequestHandler({
-            getClient: () => fakeClient(),
-            getCustomHandler: () => undefined,
-            selfDestruct,
-        });
-        const originalExit = process.exit;
-        process.exit = vi.fn() as any;
-
+    it('SELF_DESTRUCT shuts down, resolves first (so the response can be flushed) and exits after the grace period', async () => {
+        vi.useFakeTimers();
         try {
+            const selfDestruct = vi.fn().mockResolvedValue(undefined);
+            const exit = vi.fn();
+            const handler = createClusterRequestHandler({
+                getClient: () => fakeClient(),
+                getCustomHandler: () => undefined,
+                selfDestruct,
+                exit,
+            });
+
             await handler({ type: 'SELF_DESTRUCT', reason: 'test' }, 5000);
+
             expect(selfDestruct).toHaveBeenCalledWith('test');
+            expect(exit).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(SELF_DESTRUCT_EXIT_GRACE_MS);
+            expect(exit).toHaveBeenCalledTimes(1);
         } finally {
-            process.exit = originalExit;
+            vi.useRealTimers();
         }
     });
 

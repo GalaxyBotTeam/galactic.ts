@@ -5,10 +5,20 @@ import { HeartbeatResponse, rejectUnknownRequest, ShardPing } from '../protocol/
 
 export type CustomRequestHandler = (data: unknown, resolve: (data: unknown) => void, reject: (error: unknown) => void, timeout: number) => void;
 
+/**
+ * Delay between resolving a SELF_DESTRUCT request and exiting. The response is written by
+ * EventManager only after the handler resolves, and process.send() is asynchronous - exiting
+ * synchronously dropped the response every time, so the parent always waited out its
+ * SELF_DESTRUCT timeout and SIGKILLed a process that had already shut down cleanly.
+ */
+export const SELF_DESTRUCT_EXIT_GRACE_MS = 250;
+
 export type ClusterRequestHandlerDeps<T extends Client> = {
     getClient(): T;
     getCustomHandler(): CustomRequestHandler | undefined;
     selfDestruct(reason: string): Promise<void>;
+    /** Terminates the process after SELF_DESTRUCT; defaults to process.exit(0). Injected for tests. */
+    exit?(): void;
 };
 
 /**
@@ -91,7 +101,8 @@ export function createClusterRequestHandler<T extends Client>(deps: ClusterReque
                 return runBroadcastEval(deps.getClient(), message.data);
             case 'SELF_DESTRUCT':
                 return deps.selfDestruct(message.reason).then(() => {
-                    process.exit(0);
+                    const exit = deps.exit ?? (() => process.exit(0));
+                    setTimeout(exit, SELF_DESTRUCT_EXIT_GRACE_MS);
                 });
             case 'REDIRECT_REQUEST_TO_GUILD':
                 return Promise.reject(new Error('Cluster does not handle incoming REDIRECT_REQUEST_TO_GUILD requests'));
