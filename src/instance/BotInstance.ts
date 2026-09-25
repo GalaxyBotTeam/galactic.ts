@@ -138,7 +138,7 @@ export abstract class BotInstance {
     /** Hook: fan a BROADCAST_EVAL out across every cluster this BotInstance knows about (locally or via a bridge). */
     protected abstract broadcastEvalAcrossClusters(data: string, timeout: number): Promise<unknown[]>;
 
-    public on<K extends keyof AllBotInstanceListeners>(event: K, listener: AllBotInstanceListeners[K]): void {
+    public on<K extends keyof BotInstanceListeners>(event: K, listener: BotInstanceListeners[K]): void {
         if (event === 'message') {
             this.messageListener = listener as BotInstanceMessageListener;
             return;
@@ -150,7 +150,7 @@ export abstract class BotInstance {
         this.events.on(event as keyof BotInstanceEvents, listener as BotInstanceEvents[keyof BotInstanceEvents]);
     }
 
-    public off<K extends keyof AllBotInstanceListeners>(event: K, listener: AllBotInstanceListeners[K]): void {
+    public off<K extends keyof BotInstanceListeners>(event: K, listener: BotInstanceListeners[K]): void {
         if (event === 'message') {
             if (this.messageListener === listener) this.messageListener = undefined;
             return;
@@ -210,7 +210,11 @@ export type BotInstanceEvents = {
 export type BotInstanceMessageListener = (clusterProcess: ClusterProcess, message: unknown) => void;
 export type BotInstanceRequestListener = (clusterProcess: ClusterProcess, message: unknown, resolve: (data: unknown) => void, reject: (error: unknown) => void) => void;
 
-type AllBotInstanceListeners = BotInstanceEvents & {
+/** Everything `on()` / `off()` accept: the typed events plus the single CUSTOM message/request handlers. */
+export type BotInstanceListeners = BotInstanceEvents & {
     'message': BotInstanceMessageListener,
     'request': BotInstanceRequestListener,
 };
+
+/** @deprecated Renamed to {@link BotInstanceListeners}. */
+export type BotInstanceEventListeners = BotInstanceListeners;

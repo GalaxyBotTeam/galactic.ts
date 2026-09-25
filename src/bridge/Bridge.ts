@@ -1,4 +1,5 @@
 import { GatewayIntentsString, Snowflake } from "discord.js";
+import { Server } from "net-ipc";
 import { BridgeInstanceConnection } from "./BridgeInstanceConnection";
 import { BridgeInstanceConnectionStatus } from "../domain/BridgeInstanceState";
 import { BridgeClusterConnectionStatus } from "../domain/BridgeClusterState";
@@ -27,7 +28,7 @@ export class Bridge {
 
     private readonly events = new TypedEmitter<BridgeEvents>();
     private readonly clusterCalculator: ClusterCalculator;
-    private readonly server: BridgeServer;
+    private readonly bridgeServer: BridgeServer;
     private readonly reclusterer: ClusterReclusterer;
     private readonly stopCoordinator: InstanceStopCoordinator;
     private readonly scheduler: ClusterScheduler;
@@ -44,11 +45,11 @@ export class Bridge {
         this.clusterCalculator = new ClusterCalculator(this.clusterToStart, this.shardsPerCluster);
         this.reclusterer = new ClusterReclusterer(this.clusterCalculator, this.token, this.intents, () => this.getTotalShards(), this.events);
 
-        this.server = new BridgeServer(this.port, {
+        this.bridgeServer = new BridgeServer(this.port, {
             onInstanceConnected: (connection) => this.onInstanceConnected(connection),
             onInstanceDisconnected: (connection, reason) => this.onInstanceDisconnected(connection, reason),
         });
-        this.stopCoordinator = new InstanceStopCoordinator(this.clusterCalculator, this.reclusterer, this.server.connectedInstances, this.events);
+        this.stopCoordinator = new InstanceStopCoordinator(this.clusterCalculator, this.reclusterer, this.bridgeServer.connectedInstances, this.events);
         this.scheduler = new ClusterScheduler({
             checkCreate: () => this.checkCreate(),
             checkRecluster: () => this.reclusterer.checkRecluster(this.getEligibleInstancesForRecluster()),
@@ -57,7 +58,7 @@ export class Bridge {
     }
 
     public start(): void {
-        this.server.start();
+        this.bridgeServer.start();
         this.scheduler.start();
     }
 
@@ -69,7 +70,7 @@ export class Bridge {
         }));
         connection.eventManager.onRequest(createBridgeRequestHandler(connection, {
             calculator: this.clusterCalculator,
-            connectedInstances: this.server.connectedInstances,
+            connectedInstances: this.bridgeServer.connectedInstances,
             totalShards: () => this.getTotalShards(),
         }));
         this.events.emit('INSTANCE_CONNECTED', connection);
@@ -83,7 +84,7 @@ export class Bridge {
     }
 
     private getEligibleInstancesForRecluster(): BridgeInstanceConnection[] {
-        return this.server.connectedInstances.values()
+        return this.bridgeServer.connectedInstances.values()
             .filter(c => c.connectionStatus === BridgeInstanceConnectionStatus.READY)
             .filter(c => !c.dev)
             .filter(c => c.establishedAt + this.reclusteringTimeoutInMs < Date.now())
@@ -94,7 +95,7 @@ export class Bridge {
         const optionalCluster = this.clusterCalculator.getNextCluster();
         if (!optionalCluster) return;
 
-        const lowestLoadClient = this.clusterCalculator.getClusterWithLowestLoad(this.server.connectedInstances);
+        const lowestLoadClient = this.clusterCalculator.getClusterWithLowestLoad(this.bridgeServer.connectedInstances);
         if (!lowestLoadClient) return;
 
         this.reclusterer.createCluster(lowestLoadClient, optionalCluster);
@@ -142,19 +143,24 @@ export class Bridge {
         return this.clusterCalculator.clusterList;
     }
 
+    /** The underlying net-ipc Server (kept public for backwards compatibility). */
+    public get server(): Server {
+        return this.bridgeServer.server;
+    }
+
     public get connectedInstances(): Map<string, BridgeInstanceConnection> {
-        return this.server.connectedInstances;
+        return this.bridgeServer.connectedInstances;
     }
 
     async stopAllInstances(): Promise<void> {
-        const instances = Array.from(this.server.connectedInstances.values());
+        const instances = Array.from(this.bridgeServer.connectedInstances.values());
         for (const instance of instances) {
             await this.stopCoordinator.stop(instance, false);
         }
     }
 
     async stopAllInstancesWithRestart(): Promise<void> {
-        const instances = Array.from(this.server.connectedInstances.values());
+        const instances = Array.from(this.bridgeServer.connectedInstances.values());
 
         for (const instance of instances) {
             await this.stopCoordinator.stop(instance);
@@ -196,3 +202,6 @@ export type BridgeEvents = {
     'INSTANCE_STOP': (cluster: BridgeInstanceConnection) => void,
     'ERROR': (error: string) => void,
 };
+
+/** @deprecated Renamed to {@link BridgeEvents}. */
+export type BridgeEventListeners = BridgeEvents;

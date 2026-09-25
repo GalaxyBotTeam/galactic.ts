@@ -11,6 +11,14 @@ import { ignoreUnknownMessage, rejectUnknownRequest } from "../protocol/shared";
 
 export { ManagedInstanceConnectionStatus };
 
+/**
+ * @deprecated Renamed to {@link ManagedInstanceConnectionStatus}. Note that the members are
+ * string-valued now ('connected' / 'disconnected'), no longer numeric.
+ */
+export const BridgeConnectionStatus = ManagedInstanceConnectionStatus;
+/** @deprecated Renamed to {@link ManagedInstanceConnectionStatus}. */
+export type BridgeConnectionStatus = ManagedInstanceConnectionStatus;
+
 const SELF_CHECK_INTERVAL_MS = 2500;
 const SELF_CHECK_TIMEOUT_MS = 60 * 1000;
 const STARTING_CLUSTER_TIMEOUT_MS = 10 * 60 * 1000;

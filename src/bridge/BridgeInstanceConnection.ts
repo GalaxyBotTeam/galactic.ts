@@ -39,4 +39,19 @@ export class BridgeInstanceConnection {
     dispatch(message: unknown): void {
         this.transport.dispatch(message);
     }
+
+    /** @deprecated Use `eventManager.onMessage()`. Replaces the Bridge's own handler, as it always did. */
+    onMessage(callback: (message: unknown) => void): void {
+        this.eventManager.onMessage(callback);
+    }
+
+    /** @deprecated Use `eventManager.onRequest()`. Replaces the Bridge's own handler, as it always did. */
+    onRequest(callback: (message: unknown, timeout: number) => unknown): void {
+        this.eventManager.onRequest(callback);
+    }
+
+    /** @deprecated Use {@link dispatch}. */
+    messageReceive(message: unknown): void {
+        this.dispatch(message);
+    }
 }
