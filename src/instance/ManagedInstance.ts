@@ -68,7 +68,7 @@ export class ManagedInstance extends BotInstance {
             data: this.data,
         }).then(_ => {
             this.events.emit('BRIDGE_CONNECTION_ESTABLISHED');
-            this.state.transition(ManagedInstanceConnectionStatus.CONNECTED);
+            this.markConnected();
 
             this.instance.on("close", (reason) => {
                 this.events.emit('BRIDGE_CONNECTION_CLOSED', reason);
@@ -81,19 +81,28 @@ export class ManagedInstance extends BotInstance {
                 if (status == 4) {
                     this.disconnectAndKillAll();
                 } else if (status == 3) {
-                    this.state.transition(ManagedInstanceConnectionStatus.CONNECTED);
+                    this.markConnected();
                     this.events.emit('BRIDGE_CONNECTION_ESTABLISHED');
                 }
             });
         })
     }
 
+    private markConnected(): void {
+        if (this.state.current === ManagedInstanceConnectionStatus.CONNECTED) return;
+        this.state.transition(ManagedInstanceConnectionStatus.CONNECTED);
+    }
+
+    /**
+     * Idempotent: net-ipc emits `status` 4 (DISCONNECTED) and afterwards `close` for the same
+     * drop (retries exhausted / explicit close), so this runs twice per disconnect. The second
+     * call must be a no-op - DISCONNECTED -> DISCONNECTED is not a valid transition.
+     */
     private disconnectAndKillAll(): void {
-        if (this.state.current == ManagedInstanceConnectionStatus.CONNECTED) {
-            this.clusters.forEach((client) => {
-                this.killProcess(client, 'Bridge connection closed');
-            });
-        }
+        if (this.state.current === ManagedInstanceConnectionStatus.DISCONNECTED) return;
+        this.clusters.forEach((client) => {
+            this.killProcess(client, 'Bridge connection closed');
+        });
         this.state.transition(ManagedInstanceConnectionStatus.DISCONNECTED);
     }
 
