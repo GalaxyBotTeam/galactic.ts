@@ -131,4 +131,13 @@ describe('EventManager', () => {
         await expect(pending2).rejects.toMatchObject({ error: 'shutting down' });
         expect(transport.closedReason).toBe('shutting down');
     });
+
+    it('close() closes the transport even when no request is pending', () => {
+        const transport = new FakeTransport();
+        const em = new EventManager(transport);
+
+        em.close('idle close');
+
+        expect(transport.closedReason).toBe('idle close');
+    });
 });

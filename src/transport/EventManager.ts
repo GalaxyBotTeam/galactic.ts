@@ -148,7 +148,6 @@ export class EventManager<TMessage = unknown, TRequest = unknown> {
 
     // Reject and clear all pending requests to avoid memory leaks when a connection/process closes
     close(reason?: string) {
-        if (this.pendingPayloads.size === 0 && this.pendingTimeouts.size === 0) return;
         const err = { error: reason || 'EventManager closed' };
         for (const [id, handlers] of this.pendingPayloads.entries()) {
             try { handlers.reject(err); } catch (_) { /* ignore */ }
