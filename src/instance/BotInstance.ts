@@ -43,10 +43,26 @@ export abstract class BotInstance {
         });
     }
 
-    protected async killProcess(clusterProcess: ClusterProcess, reason: string): Promise<void> {
-        await this.lifecycle.kill(clusterProcess, reason);
-        this.clusters.delete(clusterProcess.id);
-        this.setClusterStopped(clusterProcess, reason);
+    /**
+     * In-flight kills keyed by cluster. killProcess() is reached twice for one teardown: once
+     * explicitly (CLUSTER_ERROR, CLUSTER_STOP, self-check, shutdown) and again from the child's
+     * 'exit' event that the first kill causes. Coalescing them keeps setClusterStopped() - and
+     * therefore CLUSTER_STOPPED to the bridge / the restart in StandaloneInstance - to one call.
+     */
+    private readonly pendingKills = new Map<ClusterProcess, Promise<void>>();
+
+    protected killProcess(clusterProcess: ClusterProcess, reason: string): Promise<void> {
+        const inFlight = this.pendingKills.get(clusterProcess);
+        if (inFlight) return inFlight;
+
+        const kill = this.lifecycle.kill(clusterProcess, reason).then(() => {
+            this.clusters.delete(clusterProcess.id);
+            this.setClusterStopped(clusterProcess, reason);
+        }).finally(() => {
+            this.pendingKills.delete(clusterProcess);
+        });
+        this.pendingKills.set(clusterProcess, kill);
+        return kill;
     }
 
     protected abstract setClusterStopped(clusterProcess: ClusterProcess, reason: string): void;
