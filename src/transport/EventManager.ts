@@ -1,6 +1,14 @@
-import {EventPayload} from "./EventPayload";
+import { EventPayload } from '../protocol/EventPayload';
+import { Transport } from './Transport';
 
-export class EventManager {
+/**
+ * Generic request/response + fire-and-forget messaging protocol over an injected Transport,
+ * correlating requests/responses by UUID with timeout handling. `TMessage`/`TRequest` are the
+ * only place a caller's protocol types are named - this class puts them into an EventPayload's
+ * `data` on the way out and casts back on the way in, so the transport itself never needs to
+ * know about them.
+ */
+export class EventManager<TMessage = unknown, TRequest = unknown> {
 
     private pendingPayloads = new Map<string, {
         resolve: (value: unknown) => void;
@@ -10,30 +18,33 @@ export class EventManager {
     // Track per-request timeout handles so we can clear them on resolve/reject
     private pendingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
-    private readonly _send: (payload: EventPayload) => Promise<void>;
+    private _onMessage?: (message: TMessage) => void;
+    private _onRequest?: (message: TRequest, timeout: number) => unknown;
 
-    private readonly _on: (payload: unknown) => void;
-
-    private readonly _request: (payload: unknown, timeout: number) => unknown;
-
-    constructor(send: (payload: EventPayload) => Promise<void>, on: (message: unknown) => void, request: (message: unknown, timeout: number) => unknown) {
-        this._send = send;
-        this._on = on;
-        this._request = request
+    constructor(private readonly transport: Transport) {
+        transport.subscribe((raw) => this.receive(raw));
     }
 
-    async send(data: unknown) {
-        return this._send({
+    onMessage(handler: (message: TMessage) => void): void {
+        this._onMessage = handler;
+    }
+
+    onRequest(handler: (message: TRequest, timeout: number) => unknown): void {
+        this._onRequest = handler;
+    }
+
+    async send(data: TMessage) {
+        return this.transport.send({
             id: crypto.randomUUID(),
             type: 'message',
             data: data,
         });
     }
 
-    async request<T>(payload: unknown, timeout: number): Promise<T> {
+    async request<TResponse = unknown>(payload: TRequest, timeout: number): Promise<TResponse> {
         const id = crypto.randomUUID();
 
-        return new Promise<T>((resolve, reject) => {
+        return new Promise<TResponse>((resolve, reject) => {
             this.pendingPayloads.set(id, {
                 resolve: resolve as (value: unknown) => void,
                 reject
@@ -50,7 +61,7 @@ export class EventManager {
             }, timeout);
             this.pendingTimeouts.set(id, t);
 
-            this._send({
+            this.transport.send({
                 id: id,
                 type: 'request',
                 data: payload,
@@ -79,12 +90,11 @@ export class EventManager {
         }
 
         if (payload.type === 'message') {
-            this._on(payload.data);
+            this._onMessage?.(payload.data as TMessage);
             return;
         }
 
         if (payload.type === 'response') {
-            // Handle requests
             const resolve = this.pendingPayloads.get(payload.id)?.resolve;
             if (resolve) {
                 resolve(payload.data);
@@ -97,7 +107,6 @@ export class EventManager {
         }
 
         if (payload.type === 'response_error') {
-            // Handle requests
             const reject = this.pendingPayloads.get(payload.id)?.reject;
             if (reject) {
                 reject(payload.data);
@@ -110,24 +119,24 @@ export class EventManager {
         }
 
         if (payload.type === 'request') {
-            // Handle requests
-            const data = this._request(payload.data, payload.timeout || 5000);
-            if(data instanceof Promise) {
+            if (!this._onRequest) return;
+            const data = this._onRequest(payload.data as TRequest, payload.timeout || 5000);
+            if (data instanceof Promise) {
                 data.then((result) => {
-                    this._send({
+                    this.transport.send({
                         id: payload.id,
                         type: 'response',
                         data: result
                     }).catch(() => {});
                 }).catch((error) => {
-                    this._send({
+                    this.transport.send({
                         id: payload.id,
                         type: 'response_error',
                         data: error
                     }).catch(() => {});
                 });
             } else {
-                this._send({
+                this.transport.send({
                     id: payload.id,
                     type: 'response',
                     data: data
@@ -139,7 +148,6 @@ export class EventManager {
 
     // Reject and clear all pending requests to avoid memory leaks when a connection/process closes
     close(reason?: string) {
-        if (this.pendingPayloads.size === 0 && this.pendingTimeouts.size === 0) return;
         const err = { error: reason || 'EventManager closed' };
         for (const [id, handlers] of this.pendingPayloads.entries()) {
             try { handlers.reject(err); } catch (_) { /* ignore */ }
@@ -153,6 +161,6 @@ export class EventManager {
             clearTimeout(to);
         }
         this.pendingTimeouts.clear();
+        this.transport.close(reason);
     }
 }
-

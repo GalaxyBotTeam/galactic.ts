@@ -1,53 +1,57 @@
-import {EventManager} from "../general/EventManager";
-import {Connection} from "net-ipc";
+import { EventManager } from "../transport/EventManager";
+import { NetIpcConnectionTransport } from "../transport/NetIpcConnectionTransport";
+import { Connection } from "net-ipc";
+import { BridgeInstanceConnectionStatus, createBridgeInstanceState } from "../domain/BridgeInstanceState";
+import { BridgeMessage, BridgeRequest } from "../protocol/bridge";
 
-export enum BridgeInstanceConnectionStatus {
-    READY = 'ready',
-    PENDING_STOP = 'pending_stop',
-}
+export { BridgeInstanceConnectionStatus };
+
 export class BridgeInstanceConnection {
     public readonly instanceID: number;
-    public readonly eventManager: EventManager;
+    public readonly eventManager: EventManager<BridgeMessage, BridgeRequest>;
     public readonly connection: Connection;
+    public readonly transport: NetIpcConnectionTransport;
     public readonly data: unknown;
-    public connectionStatus: BridgeInstanceConnectionStatus = BridgeInstanceConnectionStatus.READY;
     public readonly dev: boolean = false;
     public readonly establishedAt: number = Date.now();
 
-    private _onMessage?: (message: unknown) => void;
-    private _onRequest?: (message: unknown, timeout: number) => unknown;
+    private readonly state = createBridgeInstanceState();
 
     constructor(instanceID: number, connection: Connection, data: unknown, dev: boolean) {
         this.instanceID = instanceID;
         this.connection = connection;
         this.data = data;
         this.dev = dev || false;
-        this.eventManager = new EventManager((message) => {
-            if(!this.connection?.connection?.closed){
-                return this.connection.send(message);
-            }
-            return Promise.reject(new Error('Connection is closed, cannot send message'));
-        }, (message) => {
-            if (this._onMessage) {
-                this._onMessage(message);
-            }
-        }, (message, timeout) => {
-            if (this._onRequest) {
-                return this._onRequest(message, timeout);
-            }
-            return undefined;
-        })
+        this.transport = new NetIpcConnectionTransport(connection);
+        this.eventManager = new EventManager<BridgeMessage, BridgeRequest>(this.transport);
     }
 
-    messageReceive(message: any) {
-        this.eventManager.receive(message);
+    get connectionStatus(): BridgeInstanceConnectionStatus {
+        return this.state.current;
     }
 
-    onRequest(callback: (message: unknown, timeout: number) => unknown) {
-        this._onRequest = callback;
+    markPendingStop(): void {
+        if (this.state.current === BridgeInstanceConnectionStatus.PENDING_STOP) return;
+        this.state.transition(BridgeInstanceConnectionStatus.PENDING_STOP);
     }
 
-    onMessage(callback: (message: unknown) => void) {
-        this._onMessage = callback;
+    /** Server-side demux: BridgeServer routes an incoming net-ipc `message` event here. */
+    dispatch(message: unknown): void {
+        this.transport.dispatch(message);
+    }
+
+    /** @deprecated Use `eventManager.onMessage()`. Replaces the Bridge's own handler, as it always did. */
+    onMessage(callback: (message: unknown) => void): void {
+        this.eventManager.onMessage(callback);
+    }
+
+    /** @deprecated Use `eventManager.onRequest()`. Replaces the Bridge's own handler, as it always did. */
+    onRequest(callback: (message: unknown, timeout: number) => unknown): void {
+        this.eventManager.onRequest(callback);
+    }
+
+    /** @deprecated Use {@link dispatch}. */
+    messageReceive(message: unknown): void {
+        this.dispatch(message);
     }
 }

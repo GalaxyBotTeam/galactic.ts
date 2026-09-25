@@ -1,50 +1,27 @@
-import {ChildProcess} from "child_process";
-import {EventManager} from "../general/EventManager";
+import { ChildProcess } from "child_process";
+import { EventManager } from "../transport/EventManager";
+import { ChildProcessTransport } from "../transport/ChildProcessTransport";
+import { ProcessMessage, ProcessRequest } from "../protocol/process";
+import { ClusterProcessState, createClusterProcessState } from "../domain/ClusterProcessState";
 
-export type ClusterProcessState = 'starting' | 'running' | 'stopped';
+export type { ClusterProcessState };
 
 export class ClusterProcess {
     public readonly child: ChildProcess;
-    public readonly eventManager: EventManager;
+    public readonly eventManager: EventManager<ProcessMessage, ProcessRequest>;
     public readonly id: number;
     public readonly shardList: number[];
     public readonly totalShards: number;
-    public status: ClusterProcessState;
     public readonly createdAt: number = Date.now();
 
-    private _onMessage?: (message: unknown) => void;
-    private _onRequest?: (message: unknown, timeout: number) => unknown;
+    private readonly state = createClusterProcessState();
 
     constructor(id: number, child: ChildProcess, shardList: number[], totalShards: number) {
         this.id = id;
         this.child = child;
         this.shardList = shardList;
         this.totalShards = totalShards;
-        this.status = 'starting';
-        this.eventManager = new EventManager((message) => {
-            return new Promise<void>((resolve, reject) => {
-                this.child.send(message, (error) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        resolve();
-                    }
-                });
-            })
-        }, (message) => {
-            if (this._onMessage) {
-                this._onMessage(message);
-            }
-        }, (message, timeout) => {
-            if (this._onRequest) {
-                return this._onRequest(message, timeout);
-            }
-            return undefined;
-        })
-
-        this.child.on('message', (message) => {
-            this.eventManager.receive(message);
-        });
+        this.eventManager = new EventManager<ProcessMessage, ProcessRequest>(new ChildProcessTransport(child));
 
         // Ensure we do not retain pending requests if the child dies or errors
         this.child.on('exit', () => {
@@ -55,16 +32,23 @@ export class ClusterProcess {
         });
     }
 
-    onMessage(callback: (message: unknown) => void) {
-        this._onMessage = callback;
+    get status(): ClusterProcessState {
+        return this.state.current;
     }
 
-    onRequest(callback: (message: unknown, timeout: number) => unknown) {
-        this._onRequest = callback;
+    markRunning(): void {
+        if (this.state.current === 'running') return;
+        this.state.transition('running');
     }
 
-    public sendMessage(data: unknown) {
-        this.eventManager.send({
+    markStopped(): void {
+        if (this.state.current === 'stopped') return;
+        this.state.transition('stopped');
+    }
+
+    /** Resolves once the message was handed to the IPC channel; rejects if the child is gone. */
+    public sendMessage(data: unknown): Promise<void> {
+        return this.eventManager.send({
             type: 'CUSTOM',
             data: data,
         });

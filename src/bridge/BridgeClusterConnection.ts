@@ -1,17 +1,14 @@
-import {BridgeInstanceConnection} from "./BridgeInstanceConnection";
+import { BridgeInstanceConnection } from "./BridgeInstanceConnection";
+import { BridgeClusterConnectionStatus, createBridgeClusterState } from "../domain/BridgeClusterState";
+import { HeartbeatResponse } from "../protocol/shared";
 
-export enum BridgeClusterConnectionStatus {
-    REQUESTING = 'requesting',
-    STARTING = 'starting',
-    CONNECTED = 'connected',
-    RECLUSTERING = 'reclustering',
-    DISCONNECTED = 'disconnected',
-}
+export { BridgeClusterConnectionStatus };
 
 export class BridgeClusterConnection {
     public readonly clusterID: number;
     public readonly shardList: number[];
-    public connectionStatus: BridgeClusterConnectionStatus = BridgeClusterConnectionStatus.DISCONNECTED;
+
+    private readonly state = createBridgeClusterState();
 
     public connection?: BridgeInstanceConnection;
 
@@ -32,9 +29,13 @@ export class BridgeClusterConnection {
         this.shardList = shardList;
     }
 
+    get connectionStatus(): BridgeClusterConnectionStatus {
+        return this.state.current;
+    }
+
     setConnection(connection?: BridgeInstanceConnection): void {
-        if(connection == undefined){
-            this.connectionStatus = BridgeClusterConnectionStatus.DISCONNECTED;
+        if (connection == undefined) {
+            this.state.transition(BridgeClusterConnectionStatus.DISCONNECTED);
             this.connection = undefined;
             return;
         }
@@ -43,12 +44,21 @@ export class BridgeClusterConnection {
             throw new Error(`Connection already set for cluster ${this.clusterID}`);
         }
 
-        this.connectionStatus = BridgeClusterConnectionStatus.REQUESTING;
+        this.state.transition(BridgeClusterConnectionStatus.REQUESTING);
         this.connection = connection;
     }
 
-    setOldConnection(connection?: BridgeInstanceConnection): void {
-        this.oldConnection = connection;
+    markStarting(): void {
+        this.state.transition(BridgeClusterConnectionStatus.STARTING);
+    }
+
+    markConnected(): void {
+        this.state.transition(BridgeClusterConnectionStatus.CONNECTED);
+    }
+
+    markDisconnected(): void {
+        this.state.transition(BridgeClusterConnectionStatus.DISCONNECTED);
+        this.connection = undefined;
     }
 
     isUsed(): boolean {
@@ -56,7 +66,7 @@ export class BridgeClusterConnection {
     }
 
     reclustering(connection: BridgeInstanceConnection): void {
-        this.connectionStatus = BridgeClusterConnectionStatus.RECLUSTERING;
+        this.state.transition(BridgeClusterConnectionStatus.RECLUSTERING);
         this.oldConnection = this.connection;
         this.connection = connection;
     }
@@ -76,31 +86,4 @@ export class BridgeClusterConnection {
     }
 }
 
-export type HeartbeatResponse = {
-    cpu: {
-        raw: {
-            user: number,
-            system: number,
-        }
-        cpuPercent: string
-    },
-    memory: {
-        raw: {
-            rss: number,
-            heapTotal: number,
-            heapUsed: number,
-            external: number,
-            arrayBuffers: number,
-        },
-        memoryPercent: string
-        usage: number
-    },
-    ping: number,
-    shardPings: {
-        id: number,
-        ping: number,
-        status: number,
-        guilds: number,
-        members: number
-    }[]
-}
+export type { HeartbeatResponse };
