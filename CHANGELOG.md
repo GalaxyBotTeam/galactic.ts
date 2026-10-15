@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased (restart routines)
+
+### Added
+
+- `Bridge.restartAll(routine?, options?)` restarts every connected instance through a pluggable
+  `RestartRoutine`; ships `sequentialRestart` (default) and `rollingReload`. Each step has a
+  timeout (`stepTimeoutMs`, default 10 minutes) and fails with `RestartStepError`.
+- `standby` connect flag (last `ManagedInstance` constructor parameter): the balancer never puts
+  clusters on a standby instance; `rollingReload` uses it as a buffer.
+- `RESTART_STEP` bridge event.
+
+### Deprecated
+
+- `Bridge.stopAllInstancesWithRestart()` → `restartAll()`.
+
+### Fixed
+
+- Restarts wait for the instance to reconnect instead of a flat 10s delay.
+- `InstanceStopCoordinator.waitForDrain()` no longer polls forever; it takes an optional timeout.
+
 ## Unreleased (architecture rework)
 
 ### Breaking changes
