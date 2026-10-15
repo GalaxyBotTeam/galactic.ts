@@ -16,20 +16,20 @@ export class InstanceStopCoordinator {
         private readonly events: TypedEmitter<BridgeEvents>,
     ) {}
 
-    async stop(connection: BridgeInstanceConnection, recluster = true): Promise<void> {
+    async stop(connection: BridgeInstanceConnection, recluster = true, drainTimeoutMs?: number): Promise<void> {
         connection.markPendingStop();
 
         await connection.eventManager.send({ type: 'INSTANCE_STOP_ACK' });
         this.events.emit('INSTANCE_STOP_ACK', connection);
 
         if (recluster && this.connectedInstances.size > 1) {
-            await this.drainViaRecluster(connection);
+            await this.drainViaRecluster(connection, drainTimeoutMs);
         } else {
             await this.stopImmediately(connection);
         }
     }
 
-    private async drainViaRecluster(connection: BridgeInstanceConnection): Promise<void> {
+    private async drainViaRecluster(connection: BridgeInstanceConnection, drainTimeoutMs?: number): Promise<void> {
         let clusterToSteal;
         while ((clusterToSteal = this.calculator.getClusterForConnection(connection).filter(c =>
             c.connectionStatus === BridgeClusterConnectionStatus.CONNECTED ||
@@ -48,7 +48,7 @@ export class InstanceStopCoordinator {
             this.reclusterer.steal(clusterToSteal, least);
         }
 
-        await this.waitForDrain(connection);
+        await this.waitForDrain(connection, drainTimeoutMs);
 
         await connection.eventManager.send({ type: 'INSTANCE_STOP' });
         this.events.emit('INSTANCE_STOP', connection);
@@ -57,12 +57,18 @@ export class InstanceStopCoordinator {
         await connection.connection.close('Instance stopped.', false);
     }
 
-    private waitForDrain(connection: BridgeInstanceConnection): Promise<void> {
-        return new Promise((resolve) => {
+    /** Resolves once no cluster still has `connection` as its old connection; rejects after `timeoutMs` if given. */
+    waitForDrain(connection: BridgeInstanceConnection, timeoutMs?: number): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const timeout = timeoutMs === undefined ? undefined : setTimeout(() => {
+                clearInterval(interval);
+                reject(new Error(`Instance ${connection.instanceID} did not drain within ${timeoutMs}ms`));
+            }, timeoutMs);
             const interval = setInterval(() => {
                 const stillDraining = this.calculator.getOldClusterForConnection(connection)[0];
                 if (!stillDraining) {
                     clearInterval(interval);
+                    clearTimeout(timeout);
                     resolve();
                 }
             }, DRAIN_POLL_INTERVAL_MS);
