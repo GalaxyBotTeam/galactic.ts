@@ -26,6 +26,7 @@ export class BridgeServer {
             const id = payload?.id;
             const data = payload?.data as unknown;
             const dev = payload?.dev || false;
+            const standby = payload?.standby || false;
 
             if (!id) {
                 connection.close('Invalid payload', false);
@@ -36,7 +37,7 @@ export class BridgeServer {
                 return;
             }
 
-            const bridgeInstanceConnection = new BridgeInstanceConnection(id, connection, data, dev);
+            const bridgeInstanceConnection = new BridgeInstanceConnection(id, connection, data, dev, standby);
             this.connectedInstances.set(connection.id, bridgeInstanceConnection);
             this.events.onInstanceConnected(bridgeInstanceConnection);
         });
