@@ -131,6 +131,31 @@ Typical distributed setup:
 - **Shard**: Discord gateway connection for a portion of guilds
 - **Bridge**: Centralized coordinator for multi-instance deployments
 
+### Restart Routines
+
+`bridge.restartAll(routine?)` restarts every connected instance. galactic stops each instance; your supervisor (systemd, Docker, pm2, …) must start it again so it reconnects with the same `instanceID`. Each step waits for that reconnect. Rebalancing pauses while a routine runs, and only one routine runs at a time.
+
+- `sequentialRestart()` (default): drains and restarts the instances one after another.
+- `rollingReload()`: needs exactly one **standby** instance. The balancer never gives clusters to a standby. The routine restarts the empty standby first, then moves each instance's clusters onto the previously restarted instance before restarting it. At the end the standby is empty again.
+
+Mark an instance as standby with the last `ManagedInstance` constructor argument:
+
+```ts
+new ManagedInstance(entryPoint, host, port, instanceID, data, execArgv, false /* dev */, true /* standby */);
+```
+
+Both routines take an optional `InstanceOrder`, e.g. to restart host by host:
+
+```ts
+import { rollingReload } from "galactic.ts";
+
+await bridge.restartAll(rollingReload((ids, ctx) =>
+  [...ids].sort((a, b) => String((ctx.get(a)?.data as any)?.host).localeCompare(String((ctx.get(b)?.data as any)?.host)) || a - b)
+));
+```
+
+A failed step rejects with `RestartStepError` (no rollback). Progress is reported through the `RESTART_STEP` event.
+
 ## Integration with Discord.js
 
 galactic is fully compatible with the latest version of discord.js.  

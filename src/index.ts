@@ -14,6 +14,8 @@ export * from './transport/EventManager';
 export * from './bridge/Bridge';
 export * from './bridge/BridgeClusterConnection';
 export * from './bridge/BridgeInstanceConnection';
+export * from './bridge/RestartCoordinator';
+export * from './bridge/restartRoutines';
 
 export * from './cluster/Cluster';
 export * from './cluster/ClusterProcess';

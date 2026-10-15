@@ -5,6 +5,9 @@ import {
     BridgeConnectionStatus,
     BridgeInstanceConnection,
     ManagedInstanceConnectionStatus,
+    RestartStepError,
+    rollingReload,
+    sequentialRestart,
     type BridgeEventListeners,
     type BridgeEvents,
     type BotInstanceEventListeners,
@@ -28,6 +31,20 @@ describe('backwards-compatible exports', () => {
     it('Bridge.server still exposes the net-ipc Server', () => {
         const bridge = new Bridge(0, 'token', [], 1, 1, 1000);
         expect(bridge.server).toBeInstanceOf(Server);
+    });
+
+    it('exports the restart routine API', () => {
+        expect(typeof sequentialRestart).toBe('function');
+        expect(typeof rollingReload).toBe('function');
+        expect(typeof RestartStepError).toBe('function');
+    });
+
+    it('stopAllInstancesWithRestart delegates to restartAll', async () => {
+        const bridge = new Bridge(0, 'token', [], 1, 1, 1000);
+        const restartAll = vi.spyOn(bridge, 'restartAll').mockResolvedValue();
+
+        await bridge.stopAllInstancesWithRestart();
+        expect(restartAll).toHaveBeenCalledTimes(1);
     });
 
     it('BridgeInstanceConnection.onMessage / onRequest / messageReceive delegate to the transport', async () => {
