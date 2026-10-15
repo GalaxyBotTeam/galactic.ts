@@ -13,6 +13,7 @@ import { ClusterReclusterer } from "./ClusterReclusterer";
 import { InstanceStopCoordinator } from "./InstanceStopCoordinator";
 import { createBridgeMessageHandler } from "./BridgeMessageRouter";
 import { createBridgeRequestHandler } from "./BridgeRequestRouter";
+import type { RestartStep } from "./RestartCoordinator";
 
 const RESTART_STOP_DELAY_MS = 1000 * 10;
 
@@ -209,6 +210,7 @@ export type BridgeEvents = {
     'INSTANCE_DISCONNECTED': (client: BridgeInstanceConnection, reason: string) => void,
     'INSTANCE_STOP_ACK': (cluster: BridgeInstanceConnection) => void,
     'INSTANCE_STOP': (cluster: BridgeInstanceConnection) => void,
+    'RESTART_STEP': (step: RestartStep, status: 'started' | 'done') => void,
     'ERROR': (error: string) => void,
 };
 
