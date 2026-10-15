@@ -93,6 +93,7 @@ export class Bridge {
         return this.bridgeServer.connectedInstances.values()
             .filter(c => c.connectionStatus === BridgeInstanceConnectionStatus.READY)
             .filter(c => !c.dev)
+            .filter(c => !c.standby)
             .filter(c => c.establishedAt + this.reclusteringTimeoutInMs < Date.now())
             .toArray();
     }

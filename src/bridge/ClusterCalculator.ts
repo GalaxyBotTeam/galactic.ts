@@ -122,7 +122,7 @@ export class ClusterCalculator {
         least: BridgeInstanceConnection | undefined
     } {
 
-        const openClients = connectedClients.filter(x => !x.dev)
+        const openClients = connectedClients.filter(x => !x.dev && !x.standby)
 
         const devClients = connectedClients.filter(x => x.dev)
         const summDevConnectedClusters = devClients.map(c => this.getClusterForConnection(c).length).reduce((a, b) => a + b, 0);
@@ -161,7 +161,7 @@ export class ClusterCalculator {
         let lowestLoad = Infinity;
 
         for (const client of connectedClients.values().filter(c =>
-            c.connectionStatus === BridgeInstanceConnectionStatus.READY && !c.dev)) {
+            c.connectionStatus === BridgeInstanceConnectionStatus.READY && !c.dev && !c.standby)) {
             const clusters = this.getClusterForConnection(client);
 
             const load = clusters.length; // Assuming load is determined by the number of clusters assigned
