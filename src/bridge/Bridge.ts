@@ -13,8 +13,8 @@ import { ClusterReclusterer } from "./ClusterReclusterer";
 import { InstanceStopCoordinator } from "./InstanceStopCoordinator";
 import { createBridgeMessageHandler } from "./BridgeMessageRouter";
 import { createBridgeRequestHandler } from "./BridgeRequestRouter";
-
-const RESTART_STOP_DELAY_MS = 1000 * 10;
+import { RestartCoordinator, RestartOptions, RestartRoutine, type RestartStep } from "./RestartCoordinator";
+import { sequentialRestart } from "./restartRoutines";
 
 /** Composition root - wires transport (BridgeServer), business logic (ClusterReclusterer, InstanceStopCoordinator), and scheduling (ClusterScheduler) together. */
 export class Bridge {
@@ -31,6 +31,7 @@ export class Bridge {
     private readonly bridgeServer: BridgeServer;
     private readonly reclusterer: ClusterReclusterer;
     private readonly stopCoordinator: InstanceStopCoordinator;
+    private readonly restartCoordinator: RestartCoordinator;
     private readonly scheduler: ClusterScheduler;
 
     constructor(port: number, token: string, intents: GatewayIntentsString[], shardsPerCluster: number, clusterToStart: number, reclusteringTimeoutInMs: number, ignoreHeartbeatMissed?: boolean) {
@@ -50,9 +51,18 @@ export class Bridge {
             onInstanceDisconnected: (connection, reason) => this.onInstanceDisconnected(connection, reason),
         });
         this.stopCoordinator = new InstanceStopCoordinator(this.clusterCalculator, this.reclusterer, this.bridgeServer.connectedInstances, this.events);
+        this.restartCoordinator = new RestartCoordinator({
+            connectedInstances: this.bridgeServer.connectedInstances,
+            calculator: this.clusterCalculator,
+            reclusterer: this.reclusterer,
+            stopCoordinator: this.stopCoordinator,
+            events: this.events,
+        });
         this.scheduler = new ClusterScheduler({
             checkCreate: () => this.checkCreate(),
-            checkRecluster: () => this.reclusterer.checkRecluster(this.getEligibleInstancesForRecluster()),
+            checkRecluster: () => {
+                if (!this.restartCoordinator.running) this.reclusterer.checkRecluster(this.getEligibleInstancesForRecluster());
+            },
             heartbeat: () => this.heartbeat(),
         });
     }
@@ -93,6 +103,7 @@ export class Bridge {
         return this.bridgeServer.connectedInstances.values()
             .filter(c => c.connectionStatus === BridgeInstanceConnectionStatus.READY)
             .filter(c => !c.dev)
+            .filter(c => !c.standby)
             .filter(c => c.establishedAt + this.reclusteringTimeoutInMs < Date.now())
             .toArray();
     }
@@ -167,13 +178,14 @@ export class Bridge {
         }
     }
 
-    async stopAllInstancesWithRestart(): Promise<void> {
-        const instances = Array.from(this.bridgeServer.connectedInstances.values());
+    /** Restarts every connected instance through `routine`; rebalancing is paused while it runs. */
+    restartAll(routine: RestartRoutine = sequentialRestart(), options?: RestartOptions): Promise<void> {
+        return this.restartCoordinator.run(routine, options);
+    }
 
-        for (const instance of instances) {
-            await this.stopCoordinator.stop(instance);
-            await new Promise<void>((resolve) => setTimeout(resolve, RESTART_STOP_DELAY_MS));
-        }
+    /** @deprecated Use restartAll(). */
+    async stopAllInstancesWithRestart(): Promise<void> {
+        return this.restartAll();
     }
 
     async moveCluster(bridgeInstanceConnection: BridgeInstanceConnection, bridgeClusterConnection: BridgeClusterConnection): Promise<void> {
@@ -208,6 +220,7 @@ export type BridgeEvents = {
     'INSTANCE_DISCONNECTED': (client: BridgeInstanceConnection, reason: string) => void,
     'INSTANCE_STOP_ACK': (cluster: BridgeInstanceConnection) => void,
     'INSTANCE_STOP': (cluster: BridgeInstanceConnection) => void,
+    'RESTART_STEP': (step: RestartStep, status: 'started' | 'done') => void,
     'ERROR': (error: string) => void,
 };
 

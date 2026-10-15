@@ -8,8 +8,8 @@ function fakeConnection(id: string) {
     return { id, connection: { closed: false }, send: async () => {} } as any;
 }
 
-function fakeInstance(instanceID: number, dev = false) {
-    return new BridgeInstanceConnection(instanceID, fakeConnection(`conn-${instanceID}`), undefined, dev);
+function fakeInstance(instanceID: number, dev = false, standby = false) {
+    return new BridgeInstanceConnection(instanceID, fakeConnection(`conn-${instanceID}`), undefined, dev, standby);
 }
 
 describe('ClusterCalculator', () => {
@@ -106,6 +106,30 @@ describe('ClusterCalculator', () => {
         const connections = new Map([['a', devInstance]]);
 
         expect(calc.getClusterWithLowestLoad(connections)).toBeUndefined();
+    });
+
+    it('getClusterWithLowestLoad ignores standby instances', () => {
+        const calc = new ClusterCalculator(1, 1);
+        const standby = fakeInstance(9, false, true);
+        const normal = fakeInstance(1);
+        calc.clusterList[0].setConnection(normal);
+
+        expect(calc.getClusterWithLowestLoad(new Map([['s', standby]]))).toBeUndefined();
+        expect(calc.getClusterWithLowestLoad(new Map([['s', standby], ['a', normal]]))).toBe(normal);
+    });
+
+    it('findMostAndLeastClustersForConnections never picks a standby as least', () => {
+        const calc = new ClusterCalculator(2, 1);
+        const a = fakeInstance(1);
+        const standby = fakeInstance(9, false, true);
+        calc.clusterList[0].setConnection(a);
+        calc.clusterList[1].setConnection(a);
+
+        expect(calc.findMostAndLeastClustersForConnections([a, standby])).toEqual({ most: undefined, least: undefined });
+    });
+
+    it('standby defaults to false', () => {
+        expect(fakeInstance(1).standby).toBe(false);
     });
 
     it('findMostAndLeastClustersForConnections finds an imbalance beyond the remainder', () => {

@@ -43,7 +43,9 @@ export class ManagedInstance extends BotInstance {
 
     private dev: boolean = false;
 
-    constructor(entryPoint: string, host: string, port: number, instanceID: number, data: unknown, execArgv?: string[], dev?: boolean) {
+    private standby: boolean = false;
+
+    constructor(entryPoint: string, host: string, port: number, instanceID: number, data: unknown, execArgv?: string[], dev?: boolean, standby?: boolean) {
         super(entryPoint, execArgv);
 
         this.host = host;
@@ -51,6 +53,7 @@ export class ManagedInstance extends BotInstance {
         this.instanceID = instanceID;
         this.data = data;
         this.dev = dev || false;
+        this.standby = standby || false;
 
         this.instance = new Client({
             host: this.host,
@@ -73,6 +76,7 @@ export class ManagedInstance extends BotInstance {
         this.instance.connect({
             id: this.instanceID,
             dev: this.dev,
+            standby: this.standby,
             data: this.data,
         }).then(_ => {
             this.events.emit('BRIDGE_CONNECTION_ESTABLISHED');

@@ -13,15 +13,18 @@ export class BridgeInstanceConnection {
     public readonly transport: NetIpcConnectionTransport;
     public readonly data: unknown;
     public readonly dev: boolean = false;
+    /** Kept empty by the balancer; filled only by explicit moves or restart routines. */
+    public readonly standby: boolean = false;
     public readonly establishedAt: number = Date.now();
 
     private readonly state = createBridgeInstanceState();
 
-    constructor(instanceID: number, connection: Connection, data: unknown, dev: boolean) {
+    constructor(instanceID: number, connection: Connection, data: unknown, dev: boolean, standby?: boolean) {
         this.instanceID = instanceID;
         this.connection = connection;
         this.data = data;
         this.dev = dev || false;
+        this.standby = standby || false;
         this.transport = new NetIpcConnectionTransport(connection);
         this.eventManager = new EventManager<BridgeMessage, BridgeRequest>(this.transport);
     }
