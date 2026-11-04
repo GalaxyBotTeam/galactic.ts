@@ -10,12 +10,12 @@ export type SpawnEvents = {
 
 /** Owns child_process.fork() + env marshaling - the process-mechanics half of what was BotInstance.startProcess. */
 export class ProcessSpawner {
-    constructor(private readonly entryPoint: string, private readonly execArgv: string[] = []) {}
+    constructor(private readonly entryPoint: string, private readonly execArgv: string[] = [], private readonly env: NodeJS.ProcessEnv = {}) {}
 
     spawn(params: SpawnParams, events: SpawnEvents): ClusterProcess {
         try {
             const childProcess = fork(this.entryPoint, {
-                env: encodeEnv(params),
+                env: { ...this.env, ...encodeEnv(params) },
                 stdio: 'inherit',
                 execArgv: this.execArgv,
                 silent: false,
