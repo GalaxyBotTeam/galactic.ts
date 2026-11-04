@@ -20,6 +20,9 @@
   "license": "MIT",
   "scripts": {
     "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:cluster": "npm run build && npx tsx test/machine.ts",
     "test:bot": "npx tsx test/bot.ts",
     "test:bridge": "npm run build && npx tsx test/bridge.ts",
@@ -28,15 +31,19 @@
   "files": [
     "dist"
   ],
+  "peerDependencies": {
+    "discord.js": "^14.25.1"
+  },
   "dependencies": {
-    "discord.js": "^14.25.1",
     "dotenv": "^17.3.1",
     "net-ipc": "^2.2.2"
   },
   "devDependencies": {
+    "discord.js": "^14.25.1",
     "tsdown": "^0.21.4",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.0"
   },
   "repository": {
     "type": "git",
