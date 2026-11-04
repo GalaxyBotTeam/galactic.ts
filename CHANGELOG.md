@@ -46,6 +46,10 @@
 ### Added
 
 - `Bridge.off()`, `BotInstance.off()`.
+- `StandaloneInstance` and `ManagedInstance` accept an optional `env` constructor argument (last
+  parameter) whose variables are merged into the environment of forked cluster processes. Forked
+  clusters still do not inherit `process.env` by default - pass it explicitly if needed. The
+  variables galactic sets itself (`TOKEN`, `CLUSTER_ID`, ...) always take precedence.
 - `StandaloneInstance` restarts crashed clusters with exponential backoff (1s doubling, capped
   at 60s) and emits `ERROR` once a cluster crash-loops more than 5 times in a row.
 - Typed wire protocol (`protocol/process.ts`, `protocol/bridge.ts`) with compile-time

@@ -14,6 +14,7 @@ const machine = new ManagedInstance(
   },
   ["--import", "tsx"],
   false,
+  process.env,
 );
 
 machine.start();
