@@ -22,8 +22,8 @@ export abstract class BotInstance {
     private messageListener?: BotInstanceMessageListener;
     private requestListener?: BotInstanceRequestListener;
 
-    protected constructor(entryPoint: string, execArgv?: string[]) {
-        this.spawner = new ProcessSpawner(entryPoint, execArgv ?? []);
+    protected constructor(entryPoint: string, execArgv?: string[], env?: NodeJS.ProcessEnv) {
+        this.spawner = new ProcessSpawner(entryPoint, execArgv ?? [], env ?? {});
         this.lifecycle = new ChildProcessLifecycle(this.events);
     }
 
