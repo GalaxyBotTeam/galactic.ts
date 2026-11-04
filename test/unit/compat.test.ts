@@ -4,7 +4,10 @@ import {
     Bridge,
     BridgeConnectionStatus,
     BridgeInstanceConnection,
+    EventManager,
     ManagedInstanceConnectionStatus,
+    NetIpcClientTransport,
+    NetIpcConnectionTransport,
     RestartStepError,
     rollingReload,
     sequentialRestart,
@@ -62,5 +65,41 @@ describe('backwards-compatible exports', () => {
         expect(onMessage).toHaveBeenCalledWith({ type: 'X' });
         expect(onRequest).toHaveBeenCalledWith({ type: 'Y' }, 42);
         expect(connection.send).toHaveBeenCalledWith({ id: 'r1', type: 'response', data: 'answer' });
+    });
+});
+
+// `new EventManager(transport)` is the only constructor left, so consumers talking net-ipc
+// outside of Bridge/ManagedInstance (e.g. whitelabel links) need these from the package root.
+describe('net-ipc transports for external EventManagers', () => {
+    it('NetIpcConnectionTransport feeds a server-side EventManager through dispatch()', async () => {
+        const connection = { send: vi.fn().mockResolvedValue(undefined), connection: {} } as any;
+        const transport = new NetIpcConnectionTransport(connection);
+        const manager = new EventManager(transport);
+        manager.onRequest((data) => ({ echo: data }));
+
+        transport.dispatch({ id: 'r1', type: 'request', data: 'ping', timeout: 100 });
+        await Promise.resolve();
+
+        expect(connection.send).toHaveBeenCalledWith({ id: 'r1', type: 'response', data: { echo: 'ping' } });
+    });
+
+    it('NetIpcClientTransport subscribes to the client and refuses to send until it is ready', async () => {
+        const listeners: Record<string, (raw: unknown) => void> = {};
+        const client = {
+            status: 0,
+            send: vi.fn().mockResolvedValue(undefined),
+            on: (event: string, listener: (raw: unknown) => void) => { listeners[event] = listener; },
+        } as any;
+        const manager = new EventManager(new NetIpcClientTransport(client));
+        const onMessage = vi.fn();
+        manager.onMessage(onMessage);
+
+        listeners.message({ id: 'm1', type: 'message', data: 'hello' });
+        expect(onMessage).toHaveBeenCalledWith('hello');
+
+        await expect(manager.send('nope')).rejects.toThrow('Client is not ready');
+        client.status = 3;
+        await manager.send('ok');
+        expect(client.send).toHaveBeenCalledOnce();
     });
 });

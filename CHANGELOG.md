@@ -20,7 +20,29 @@
 - Restarts wait for the instance to reconnect instead of a flat 10s delay.
 - `InstanceStopCoordinator.waitForDrain()` no longer polls forever; it takes an optional timeout.
 
-## Unreleased (architecture rework)
+## 3.0.0-pre.1 (architecture rework)
+
+Install with `npm install galactic.ts@next`. The wire protocol message types are unchanged from
+2.1.x.
+
+### Migrating `new EventManager(send, on, request)`
+
+This is the only source-level break in GalaxyBot and GalaxyBridge (both `WhitelabelInstance`s).
+Pass a transport and register the handlers afterwards:
+
+```ts
+// net-ipc Client side
+const eventManager = new EventManager(new NetIpcClientTransport(client));
+// net-ipc Connection side: the Server demuxes, so forward with transport.dispatch(raw)
+const transport = new NetIpcConnectionTransport(connection);
+const eventManager = new EventManager(transport);
+
+eventManager.onMessage((message) => { /* ... */ });
+eventManager.onRequest((message, timeout) => { /* ... */ });
+```
+
+`NetIpcClientTransport` subscribes to the client's `message` event itself. Remove any existing
+`client.on('message', (m) => eventManager.receive(m))`, otherwise every request is handled twice.
 
 ### Breaking changes
 
@@ -46,6 +68,8 @@
 ### Added
 
 - `Bridge.off()`, `BotInstance.off()`.
+- `NetIpcClientTransport` and `NetIpcConnectionTransport` are exported, so an `EventManager` can
+  be used over net-ipc outside of `Bridge` / `ManagedInstance`.
 - `StandaloneInstance` and `ManagedInstance` accept an optional `env` constructor argument (last
   parameter) whose variables are merged into the environment of forked cluster processes. Forked
   clusters still do not inherit `process.env` by default - pass it explicitly if needed. The

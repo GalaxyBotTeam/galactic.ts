@@ -1,7 +1,8 @@
 name: Release
 on:
   release:
-    types: [released]
+    # `released` does not fire for pre-releases and `published` would fire twice for a stable one.
+    types: [released, prereleased]
 
 jobs:
   release:
@@ -25,4 +26,5 @@ jobs:
       - run: npm run build
 
       - name: Publish to npm via Trusted Publishing
-        run: npm publish --provenance --access public
+        # Pre-releases go to `next`, so a plain `npm install galactic.ts` keeps resolving to stable.
+        run: npm publish --provenance --access public --tag ${{ github.event.release.prerelease && 'next' || 'latest' }}
