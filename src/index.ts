@@ -10,6 +10,8 @@ export * from './protocol/bridge';
 export * from './protocol/EventPayload';
 export * from './transport/Transport';
 export * from './transport/EventManager';
+export * from './transport/NetIpcClientTransport';
+export * from './transport/NetIpcConnectionTransport';
 
 export * from './bridge/Bridge';
 export * from './bridge/BridgeClusterConnection';
