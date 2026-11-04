@@ -141,7 +141,7 @@ Typical distributed setup:
 Mark an instance as standby with the last `ManagedInstance` constructor argument:
 
 ```ts
-new ManagedInstance(entryPoint, host, port, instanceID, data, execArgv, false /* dev */, true /* standby */);
+new ManagedInstance(entryPoint, host, port, instanceID, data, execArgv, false /* dev */, undefined /* env */, true /* standby */);
 ```
 
 Both routines take an optional `InstanceOrder`, e.g. to restart host by host:

@@ -21,8 +21,8 @@ export class StandaloneInstance extends BotInstance {
     /** Pending backoff timers per cluster id - cleared on shutdown so nothing respawns afterwards. */
     private readonly restartTimers: Map<number, ReturnType<typeof setTimeout>> = new Map();
 
-    constructor(entryPoint: string, shardsPerCluster: number, totalClusters: number, token: string, intents: GatewayIntentsString[], execArgv?: string[]) {
-        super(entryPoint, execArgv);
+    constructor(entryPoint: string, shardsPerCluster: number, totalClusters: number, token: string, intents: GatewayIntentsString[], execArgv?: string[], env?: NodeJS.ProcessEnv) {
+        super(entryPoint, execArgv, env);
         this.shardsPerCluster = shardsPerCluster;
         this.totalClusters = totalClusters;
         this.token = token;
