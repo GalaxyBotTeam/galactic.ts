@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ClusterCalculator } from '../../../src/bridge/ClusterCalculator';
 import { ClusterReclusterer } from '../../../src/bridge/ClusterReclusterer';
+import { IdentifyGate } from '../../../src/bridge/IdentifyGate';
 import { TypedEmitter } from '../../../src/general/TypedEmitter';
 import type { BridgeEvents } from '../../../src/bridge/Bridge';
 
@@ -11,7 +12,7 @@ function fakeInstance(id: number) {
 function setup(clusterCount: number, shardsPerCluster: number) {
     const calculator = new ClusterCalculator(clusterCount, shardsPerCluster);
     const events = new TypedEmitter<BridgeEvents>();
-    const reclusterer = new ClusterReclusterer(calculator, 'token', [], () => clusterCount * shardsPerCluster, events);
+    const reclusterer = new ClusterReclusterer(calculator, 'token', [], () => clusterCount * shardsPerCluster, events, new IdentifyGate());
     return { calculator, events, reclusterer };
 }
 

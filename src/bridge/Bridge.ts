@@ -15,6 +15,8 @@ import { createBridgeMessageHandler } from "./BridgeMessageRouter";
 import { createBridgeRequestHandler } from "./BridgeRequestRouter";
 import { RestartCoordinator, RestartOptions, RestartRoutine, type RestartStep } from "./RestartCoordinator";
 import { sequentialRestart } from "./restartRoutines";
+import { IdentifyGate } from "./IdentifyGate";
+import { checkShardCount, fetchGatewayInfo, type GatewayInfo } from "./GatewayInfo";
 
 /** Composition root - wires transport (BridgeServer), business logic (ClusterReclusterer, InstanceStopCoordinator), and scheduling (ClusterScheduler) together. */
 export class Bridge {
@@ -33,6 +35,8 @@ export class Bridge {
     private readonly stopCoordinator: InstanceStopCoordinator;
     private readonly restartCoordinator: RestartCoordinator;
     private readonly scheduler: ClusterScheduler;
+    private readonly gate = new IdentifyGate();
+    private shardCountRejected = false;
 
     constructor(port: number, token: string, intents: GatewayIntentsString[], shardsPerCluster: number, clusterToStart: number, reclusteringTimeoutInMs: number, ignoreHeartbeatMissed?: boolean) {
         this.port = port;
@@ -44,19 +48,20 @@ export class Bridge {
         this.ignoreHeartbeatMissed = ignoreHeartbeatMissed || false;
 
         this.clusterCalculator = new ClusterCalculator(this.clusterToStart, this.shardsPerCluster);
-        this.reclusterer = new ClusterReclusterer(this.clusterCalculator, this.token, this.intents, () => this.getTotalShards(), this.events);
+        this.reclusterer = new ClusterReclusterer(this.clusterCalculator, this.token, this.intents, () => this.getTotalShards(), this.events, this.gate);
 
         this.bridgeServer = new BridgeServer(this.port, {
             onInstanceConnected: (connection) => this.onInstanceConnected(connection),
             onInstanceDisconnected: (connection, reason) => this.onInstanceDisconnected(connection, reason),
         });
-        this.stopCoordinator = new InstanceStopCoordinator(this.clusterCalculator, this.reclusterer, this.bridgeServer.connectedInstances, this.events);
+        this.stopCoordinator = new InstanceStopCoordinator(this.clusterCalculator, this.reclusterer, this.bridgeServer.connectedInstances, this.events, this.gate);
         this.restartCoordinator = new RestartCoordinator({
             connectedInstances: this.bridgeServer.connectedInstances,
             calculator: this.clusterCalculator,
             reclusterer: this.reclusterer,
             stopCoordinator: this.stopCoordinator,
             events: this.events,
+            gate: this.gate,
         });
         this.scheduler = new ClusterScheduler({
             checkCreate: () => this.checkCreate(),
@@ -72,6 +77,21 @@ export class Bridge {
             this.events.emit('ERROR', `Bridge server failed to start on port ${this.port}: ${err}`);
         });
         this.scheduler.start();
+        void this.refreshGatewayInfo();
+    }
+
+    /** Until this answers, the gate assumes `max_concurrency` 1, which is safe for every bot. */
+    private async refreshGatewayInfo(): Promise<void> {
+        let info: GatewayInfo;
+        try {
+            info = await fetchGatewayInfo(this.token);
+        } catch (err) {
+            this.events.emit('ERROR', `Could not read the gateway limits, keeping the last known max_concurrency: ${err}`);
+            return;
+        }
+        this.gate.setMaxConcurrency(info.session_start_limit.max_concurrency);
+        this.events.emit('GATEWAY_INFO', info);
+        checkShardCount(info, this.getTotalShards()).forEach(warning => this.events.emit('ERROR', warning));
     }
 
     private onInstanceConnected(connection: BridgeInstanceConnection): void {
@@ -84,6 +104,7 @@ export class Bridge {
                     this.events.emit('ERROR', `Stopping instance ${c.instanceID} failed: ${err}`);
                 });
             },
+            onInvalidShardCount: () => this.onInvalidShardCount(),
         }));
         connection.eventManager.onRequest(createBridgeRequestHandler(connection, {
             calculator: this.clusterCalculator,
@@ -100,6 +121,13 @@ export class Bridge {
         this.events.emit('INSTANCE_DISCONNECTED', connection, reason);
     }
 
+    /** Retrying cannot help and costs session starts: every cluster would fail the same way. */
+    private onInvalidShardCount(): void {
+        if (this.shardCountRejected) return;
+        this.shardCountRejected = true;
+        this.events.emit('ERROR', `Discord rejected ${this.getTotalShards()} shards (close code 4010). No more clusters start until the shard count is fixed and the Bridge restarted.`);
+    }
+
     private getEligibleInstancesForRecluster(): BridgeInstanceConnection[] {
         return this.bridgeServer.connectedInstances.values()
             .filter(c => c.connectionStatus === BridgeInstanceConnectionStatus.READY)
@@ -110,13 +138,15 @@ export class Bridge {
     }
 
     private checkCreate(): void {
-        const optionalCluster = this.clusterCalculator.getNextCluster();
-        if (!optionalCluster) return;
+        if (this.shardCountRejected) return;
 
-        const lowestLoadClient = this.clusterCalculator.getClusterWithLowestLoad(this.bridgeServer.connectedInstances);
-        if (!lowestLoadClient) return;
+        let cluster;
+        while ((cluster = this.clusterCalculator.getNextCluster()) !== undefined) {
+            const lowestLoadClient = this.clusterCalculator.getClusterWithLowestLoad(this.bridgeServer.connectedInstances);
+            if (!lowestLoadClient || !this.gate.tryAcquire(cluster.shardList)) return;
 
-        this.reclusterer.createCluster(lowestLoadClient, optionalCluster);
+            this.reclusterer.createCluster(lowestLoadClient, cluster);
+        }
     }
 
     private heartbeat(): void {
@@ -180,7 +210,8 @@ export class Bridge {
     }
 
     /** Restarts every connected instance through `routine`; rebalancing is paused while it runs. */
-    restartAll(routine: RestartRoutine = sequentialRestart(), options?: RestartOptions): Promise<void> {
+    async restartAll(routine: RestartRoutine = sequentialRestart(), options?: RestartOptions): Promise<void> {
+        await this.refreshGatewayInfo();
         return this.restartCoordinator.run(routine, options);
     }
 
@@ -190,6 +221,7 @@ export class Bridge {
     }
 
     async moveCluster(bridgeInstanceConnection: BridgeInstanceConnection, bridgeClusterConnection: BridgeClusterConnection): Promise<void> {
+        await this.gate.acquire(bridgeClusterConnection.shardList);
         this.reclusterer.moveCluster(bridgeInstanceConnection, bridgeClusterConnection);
     }
 
@@ -223,6 +255,8 @@ export type BridgeEvents = {
     'INSTANCE_STOP': (cluster: BridgeInstanceConnection) => void,
     'RESTART_STEP': (step: RestartStep, status: 'started' | 'done') => void,
     'ERROR': (error: string) => void,
+    /** Discord's `GET /gateway/bot`, read on start and before every restart routine. */
+    'GATEWAY_INFO': (info: GatewayInfo) => void,
 };
 
 /** @deprecated Renamed to {@link BridgeEvents}. */

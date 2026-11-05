@@ -5,7 +5,7 @@ import { TypedEmitter } from '../../../src/general/TypedEmitter';
 const connection = { instanceID: 1 } as any;
 
 function coordinatorWith(getOldClusterForConnection: ReturnType<typeof vi.fn>) {
-    return new InstanceStopCoordinator({ getOldClusterForConnection } as any, {} as any, new Map(), new TypedEmitter());
+    return new InstanceStopCoordinator({ getOldClusterForConnection } as any, {} as any, new Map(), new TypedEmitter(), {} as any);
 }
 
 describe('InstanceStopCoordinator.waitForDrain', () => {

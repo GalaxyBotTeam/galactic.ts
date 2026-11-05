@@ -53,6 +53,12 @@ export function assertNever(x: never, context: string): never {
     throw new Error(`Unhandled protocol case in ${context}: ${JSON.stringify(x)}`);
 }
 
+/** Gateway close code for a shard count Discord does not accept. */
+export const INVALID_SHARD_CLOSE_CODE = 4010;
+
+/** Travels from the cluster to the Bridge as a cluster error and stop reason; the Bridge recognises it by this text. */
+export const INVALID_SHARD_COUNT_ERROR = 'Discord rejected the shard count (close code 4010)';
+
 /**
  * Runtime-safe exhaustiveness pins for the message/request routers. They give the same
  * compile-time guarantee as `assertNever` (the `default` branch only type-checks while every

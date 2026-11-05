@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createBridgeMessageHandler } from '../../../src/bridge/BridgeMessageRouter';
 import { TypedEmitter } from '../../../src/general/TypedEmitter';
+import { INVALID_SHARD_COUNT_ERROR } from '../../../src/protocol/shared';
 import type { BridgeEvents } from '../../../src/bridge/Bridge';
 
 function fakeCluster(clusterID: number) {
@@ -24,8 +25,9 @@ function setup(cluster: ReturnType<typeof fakeCluster>) {
     const events = new TypedEmitter<BridgeEvents>();
     const onInstanceStop = vi.fn();
     const connection = fakeConnection();
-    const handler = createBridgeMessageHandler(connection, { calculator, events, onInstanceStop });
-    return { handler, events, onInstanceStop, connection };
+    const onInvalidShardCount = vi.fn();
+    const handler = createBridgeMessageHandler(connection, { calculator, events, onInstanceStop, onInvalidShardCount });
+    return { handler, events, onInstanceStop, onInvalidShardCount, connection };
 }
 
 describe('BridgeMessageRouter', () => {
@@ -82,6 +84,16 @@ describe('BridgeMessageRouter', () => {
 
         expect(listener).toHaveBeenCalledWith(cluster);
         expect(cluster.setConnection).toHaveBeenCalledWith(undefined);
+    });
+
+    it('CLUSTER_STOPPED reports a shard count Discord rejected', () => {
+        const { handler, onInvalidShardCount } = setup(fakeCluster(0));
+
+        handler({ type: 'CLUSTER_STOPPED', data: { id: 99, reason: `Cluster error: ${INVALID_SHARD_COUNT_ERROR}` } });
+        expect(onInvalidShardCount).toHaveBeenCalledTimes(1);
+
+        handler({ type: 'CLUSTER_STOPPED', data: { id: 99, reason: 'Heartbeat missed' } });
+        expect(onInvalidShardCount).toHaveBeenCalledTimes(1);
     });
 
     it('INSTANCE_STOP invokes the onInstanceStop callback with the connection', () => {

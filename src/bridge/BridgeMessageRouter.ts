@@ -3,13 +3,14 @@ import { BridgeClusterConnection } from "./BridgeClusterConnection";
 import { ClusterCalculator } from "./ClusterCalculator";
 import { TypedEmitter } from "../general/TypedEmitter";
 import { BridgeMessage } from "../protocol/bridge";
-import { ignoreUnknownMessage } from "../protocol/shared";
+import { ignoreUnknownMessage, INVALID_SHARD_COUNT_ERROR } from "../protocol/shared";
 import type { BridgeEvents } from "./Bridge";
 
 export type BridgeMessageRouterDeps = {
     calculator: ClusterCalculator;
     events: TypedEmitter<BridgeEvents>;
     onInstanceStop(connection: BridgeInstanceConnection): void;
+    onInvalidShardCount(): void;
 };
 
 /** Typed dispatch table replacing the old `if (m.type == 'X')` chain in Bridge.onMessage. */
@@ -44,6 +45,7 @@ export function createBridgeMessageHandler(connection: BridgeInstanceConnection,
                 return;
             }
             case 'CLUSTER_STOPPED': {
+                if (message.data.reason?.includes(INVALID_SHARD_COUNT_ERROR)) deps.onInvalidShardCount();
                 const cluster = findCluster(deps.calculator, connection, message.data.id);
                 if (cluster) {
                     cluster.readyAt = undefined;

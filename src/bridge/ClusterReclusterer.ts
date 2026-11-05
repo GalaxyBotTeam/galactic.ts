@@ -4,6 +4,7 @@ import { BridgeClusterConnectionStatus } from "../domain/BridgeClusterState";
 import { BridgeClusterConnection } from "./BridgeClusterConnection";
 import { BridgeInstanceConnection } from "./BridgeInstanceConnection";
 import { TypedEmitter } from "../general/TypedEmitter";
+import { IdentifyGate } from "./IdentifyGate";
 import type { BridgeEvents } from "./Bridge";
 
 /** Steal-selection + cluster assign/recluster business logic - was Bridge.createCluster/checkRecluster/moveCluster. */
@@ -14,6 +15,7 @@ export class ClusterReclusterer {
         private readonly intents: GatewayIntentsString[],
         private readonly totalShards: () => number,
         private readonly events: TypedEmitter<BridgeEvents>,
+        private readonly gate: IdentifyGate,
     ) {}
 
     createCluster(connection: BridgeInstanceConnection, cluster: BridgeClusterConnection, recluster = false): void {
@@ -56,7 +58,7 @@ export class ClusterReclusterer {
         if (!most || !least) return;
 
         const clusterToSteal = this.calculator.getClusterForConnection(most)[0];
-        if (!clusterToSteal) return;
+        if (!clusterToSteal || !this.gate.tryAcquire(clusterToSteal.shardList)) return;
 
         this.steal(clusterToSteal, least);
     }
