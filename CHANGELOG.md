@@ -13,8 +13,9 @@
 ### Changed
 
 - Cluster starts follow `max_concurrency` across all instances. A cluster with several shards in
-  one rate limit key now blocks that key for all of its identifies, so bots with
-  `shardsPerCluster` above `max_concurrency` start slower than before, but within the limit.
+  one rate limit key now blocks that key for all of its identifies, 6.5 seconds each (Discord's
+  5 second window plus the jitter of discord.js). Bots with `shardsPerCluster` above
+  `max_concurrency` start slower than before, but within the limit.
 - `moveAllClusters`, draining and `Bridge.moveCluster` wait for their identify slot instead of
   starting all clusters at once.
 - `Bridge.restartAll` is `async` and reads the gateway limits first.

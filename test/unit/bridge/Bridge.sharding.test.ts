@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Bridge } from '../../../src/bridge/Bridge';
-import { IDENTIFY_WINDOW_MS } from '../../../src/bridge/IdentifyGate';
+import { IDENTIFY_SPACING_MS } from '../../../src/bridge/IdentifyGate';
 import { BridgeInstanceConnection } from '../../../src/bridge/BridgeInstanceConnection';
 
 function setup(clusters: number, shardsPerCluster: number, maxConcurrency: number) {
@@ -23,7 +23,7 @@ describe('Bridge cluster starts', () => {
         bridge.checkCreate();
         expect(started(bridge)).toBe(4);
 
-        vi.advanceTimersByTime(IDENTIFY_WINDOW_MS - 1);
+        vi.advanceTimersByTime(IDENTIFY_SPACING_MS - 1);
         bridge.checkCreate();
         expect(started(bridge)).toBe(4);
 

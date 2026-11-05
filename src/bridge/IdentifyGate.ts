@@ -1,5 +1,8 @@
-/** Discord allows one identify per rate limit key in this window. */
-export const IDENTIFY_WINDOW_MS = 5000;
+/**
+ * Time reserved per identify. Discord allows one per rate limit key every 5 seconds, and discord.js
+ * adds up to 1.5 seconds of jitter between the identifies of one process.
+ */
+export const IDENTIFY_SPACING_MS = 6500;
 
 /**
  * Paces cluster starts across all instances. discord.js throttles identifies inside one process only,
@@ -40,7 +43,7 @@ export class IdentifyGate {
 
     private reserve(shardList: number[], start: number): void {
         for (const [key, identifies] of this.identifiesPerKey(shardList)) {
-            this.busyUntil.set(key, start + identifies * IDENTIFY_WINDOW_MS);
+            this.busyUntil.set(key, start + identifies * IDENTIFY_SPACING_MS);
         }
     }
 

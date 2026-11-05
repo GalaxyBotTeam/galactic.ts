@@ -166,7 +166,7 @@ A failed step rejects with `RestartStepError` (no rollback). Progress is reporte
 
 On start and before every restart routine the Bridge reads `GET /gateway/bot` and emits the result as `GATEWAY_INFO`.
 
-- Cluster starts follow `max_concurrency` across all instances: shards with the same `shard_id % max_concurrency` identify 5 seconds apart. Startup, the balancer, draining, `move-cluster` and restart routines share this limit. If Discord cannot be reached, the Bridge assumes `max_concurrency` 1.
+- Cluster starts follow `max_concurrency` across all instances: the Bridge plans 6.5 seconds per identify for shards with the same `shard_id % max_concurrency`, Discord's 5 second window plus the jitter of discord.js. Startup, the balancer, draining, `move-cluster` and restart routines share this limit. If Discord cannot be reached, the Bridge assumes `max_concurrency` 1.
 - `ERROR` reports fewer shards than Discord recommends, too few session starts left, and on large bot sharding a shard count that is not a multiple of `max_concurrency`. Discord does not expose the assigned shard number, so this last check is an approximation.
 - If Discord closes a shard with 4010, the cluster reports it and the Bridge stops starting clusters. Fix the shard count and restart the Bridge.
 

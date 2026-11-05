@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { IDENTIFY_WINDOW_MS, IdentifyGate } from '../../../src/bridge/IdentifyGate';
+import { IDENTIFY_SPACING_MS, IdentifyGate } from '../../../src/bridge/IdentifyGate';
 
 const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
 
@@ -13,7 +13,7 @@ describe('IdentifyGate', () => {
         expect(gate.tryAcquire([0])).toBe(true);
         expect(gate.tryAcquire([1])).toBe(false);
 
-        vi.advanceTimersByTime(IDENTIFY_WINDOW_MS);
+        vi.advanceTimersByTime(IDENTIFY_SPACING_MS);
         expect(gate.tryAcquire([1])).toBe(true);
     });
 
@@ -21,10 +21,10 @@ describe('IdentifyGate', () => {
         const gate = new IdentifyGate();
         expect(gate.tryAcquire([0, 1])).toBe(true);
 
-        vi.advanceTimersByTime(IDENTIFY_WINDOW_MS);
+        vi.advanceTimersByTime(IDENTIFY_SPACING_MS);
         expect(gate.tryAcquire([2])).toBe(false);
 
-        vi.advanceTimersByTime(IDENTIFY_WINDOW_MS);
+        vi.advanceTimersByTime(IDENTIFY_SPACING_MS);
         expect(gate.tryAcquire([2])).toBe(true);
     });
 
@@ -43,7 +43,7 @@ describe('IdentifyGate', () => {
 
         expect(gate.tryAcquire(range(16, 31))).toBe(false);
 
-        vi.advanceTimersByTime(IDENTIFY_WINDOW_MS);
+        vi.advanceTimersByTime(IDENTIFY_SPACING_MS);
         expect(gate.tryAcquire(range(16, 31))).toBe(true);
     });
 
@@ -57,7 +57,7 @@ describe('IdentifyGate', () => {
         await vi.advanceTimersByTimeAsync(0);
         expect(order).toEqual([1]);
 
-        await vi.advanceTimersByTimeAsync(IDENTIFY_WINDOW_MS);
+        await vi.advanceTimersByTimeAsync(IDENTIFY_SPACING_MS);
         await Promise.all([first, second]);
         expect(order).toEqual([1, 2]);
     });
