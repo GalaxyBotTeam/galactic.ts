@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.0.0-pre.3 (rotating standby)
+
+### Changed
+
+- `rollingReload` moves every cluster exactly once. The final move back off the standby is gone:
+  the standby role follows the empty instance, so the last restarted instance becomes the new
+  standby. The `standby` flag now only sets the starting point; a role moved by a routine wins
+  over it on reconnect until the Bridge restarts.
+
+### Added
+
+- `RestartContext.transferStandby(fromID, toID)` for custom routines.
+- `BridgeInstanceConnection.setStandby()`; `standby` is now a getter.
+- `INSTANCE_STANDBY` message and `ManagedInstance` event: the Bridge reports the current role on
+  every connect and role change. `ManagedInstance.standby` follows it. Instances on an older
+  version ignore the message with a warning.
+- `RESTART_STEP` reports `{ kind: 'standby', from, to }`. Handle this kind if you switch over
+  `step.kind`.
+
 ## 3.0.0-pre.2 (restart routines)
 
 ### Added

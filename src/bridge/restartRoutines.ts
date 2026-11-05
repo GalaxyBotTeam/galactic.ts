@@ -20,22 +20,23 @@ export function sequentialRestart(order: InstanceOrder = byId): RestartRoutine {
     };
 }
 
-/** Rolls every instance's clusters onto the previously restarted one, starting with the empty standby. */
+/**
+ * Rolls every instance's clusters onto the previously restarted one, starting with the empty standby.
+ * Each cluster moves exactly once: the role follows the empty instance, so the last one ends up as the standby.
+ */
 export function rollingReload(order: InstanceOrder = byId): RestartRoutine {
     return async (ctx) => {
         if (ctx.standby.length !== 1) throw new Error(`rollingReload needs exactly one standby instance, found ${ctx.standby.length}.`);
         const ids = ordered(order, ctx);
-        const standby = ctx.standby[0];
-
         // The standby runs new code before it takes any clusters.
-        await ctx.restart(standby);
-        let prev = standby;
+        let prev = ctx.standby[0];
+        await ctx.restart(prev);
         for (const id of ids) {
             await ctx.moveAllClusters(id, prev);
+            // Moved at every hop, so an aborted routine still leaves the empty instance as the standby.
+            ctx.transferStandby(prev, id);
             await ctx.restart(id);
             prev = id;
         }
-        // Leave the standby empty again.
-        if (prev !== standby) await ctx.moveAllClusters(standby, prev);
     };
 }

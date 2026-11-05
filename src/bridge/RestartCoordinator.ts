@@ -13,7 +13,11 @@ export type RestartRoutine = (ctx: RestartContext) => Promise<void>;
 
 export type RestartOptions = { stepTimeoutMs?: number };
 
-export type RestartStep = { kind: 'move', from: number, to: number } | { kind: 'restart', instanceID: number };
+export type RestartStep =
+    | { kind: 'move', from: number, to: number }
+    | { kind: 'restart', instanceID: number }
+    /** Happens at once, so it is only reported as `done`. */
+    | { kind: 'standby', from: number, to: number };
 
 /** Building blocks a restart routine works with; instances are addressed by ID because a restart replaces the connection object. */
 export interface RestartContext {
@@ -27,6 +31,8 @@ export interface RestartContext {
     moveAllClusters(fromID: number, toID: number): Promise<void>;
     /** Stops the instance (draining onto other instances if it still has clusters), then waits for its reconnect. */
     restart(instanceID: number): Promise<void>;
+    /** Hands the standby role from one instance to another; it outlives their reconnects until the Bridge restarts. */
+    transferStandby(fromID: number, toID: number): void;
 }
 
 /** A single routine step failed; the routine is aborted without rollback. */
@@ -48,12 +54,27 @@ export type RestartCoordinatorDeps = {
 /** Runs one restart routine at a time against the connected instances. */
 export class RestartCoordinator {
     private _running = false;
+    /** Roles set by `transferStandby`; an instance's own `standby` flag only counts until it has an entry here. */
+    private readonly standbyRoles = new Map<number, boolean>();
 
     constructor(private readonly deps: RestartCoordinatorDeps) {}
 
     /** True while a routine runs; the Bridge pauses rebalancing meanwhile. */
     get running(): boolean {
         return this._running;
+    }
+
+    /** A connecting instance announces its configured flag, so restore the role it held and tell it which one counts. */
+    syncStandbyRole(connection: BridgeInstanceConnection): void {
+        const role = this.standbyRoles.get(connection.instanceID);
+        if (role !== undefined) connection.setStandby(role);
+        this.reportStandbyRole(connection);
+    }
+
+    private reportStandbyRole(connection: BridgeInstanceConnection): void {
+        connection.eventManager.send({ type: 'INSTANCE_STANDBY', data: { standby: connection.standby } }).catch((err) => {
+            this.deps.events.emit('ERROR', `Reporting the standby role to instance ${connection.instanceID} failed: ${err}`);
+        });
     }
 
     async run(routine: RestartRoutine, options: RestartOptions = {}): Promise<void> {
@@ -78,7 +99,20 @@ export class RestartCoordinator {
             get: (id) => this.find(id),
             moveAllClusters: (from, to) => this.moveAllClusters(from, to, stepTimeoutMs),
             restart: (id) => this.restart(id, stepTimeoutMs),
+            transferStandby: (from, to) => {
+                this.setStandbyRole(from, false);
+                this.setStandbyRole(to, true);
+                this.deps.events.emit('RESTART_STEP', { kind: 'standby', from, to }, 'done');
+            },
         };
+    }
+
+    private setStandbyRole(instanceID: number, standby: boolean): void {
+        this.standbyRoles.set(instanceID, standby);
+        const connection = this.find(instanceID);
+        if (!connection) return;
+        connection.setStandby(standby);
+        this.reportStandbyRole(connection);
     }
 
     private find(instanceID: number): BridgeInstanceConnection | undefined {

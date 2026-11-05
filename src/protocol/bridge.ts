@@ -13,7 +13,9 @@ export type BridgeMessage =
     | { type: 'CLUSTER_READY', data: { id: number, guilds?: number, members?: number } }
     | { type: 'CLUSTER_STOPPED', data: { id: number, reason?: string } }
     | { type: 'INSTANCE_STOP' }
-    | { type: 'INSTANCE_STOP_ACK' };
+    | { type: 'INSTANCE_STOP_ACK' }
+    /** The instance's current standby role: on every connect and whenever a restart routine moves it. */
+    | { type: 'INSTANCE_STANDBY', data: { standby: boolean } };
 
 /**
  * Wire protocol between a ManagedInstance and the Bridge, request/response side.

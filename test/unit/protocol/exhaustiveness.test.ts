@@ -39,6 +39,7 @@ function handleBridgeMessage(m: BridgeMessage): string {
         case 'CLUSTER_STOPPED': return 'stopped';
         case 'INSTANCE_STOP': return 'instance_stop';
         case 'INSTANCE_STOP_ACK': return 'instance_stop_ack';
+        case 'INSTANCE_STANDBY': return 'instance_standby';
         default: return assertNever(m, 'handleBridgeMessage');
     }
 }

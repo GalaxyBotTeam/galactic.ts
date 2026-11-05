@@ -203,6 +203,7 @@ export type BotInstanceEvents = {
     'BRIDGE_CONNECTION_STATUS_CHANGE': (status: number) => void,
     'INSTANCE_STOP_ACK': () => void,
     'INSTANCE_STOP': () => void,
+    'INSTANCE_STANDBY': (standby: boolean) => void,
 
     'SELF_CHECK_SUCCESS': () => void,
     'SELF_CHECK_ERROR': (error: string) => void,
