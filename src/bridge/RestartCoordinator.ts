@@ -6,6 +6,7 @@ import { ClusterReclusterer } from "./ClusterReclusterer";
 import { InstanceStopCoordinator } from "./InstanceStopCoordinator";
 import { TypedEmitter } from "../general/TypedEmitter";
 import type { BridgeEvents } from "./Bridge";
+import { IdentifyGate } from "./IdentifyGate";
 
 export const DEFAULT_RESTART_STEP_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -49,6 +50,7 @@ export type RestartCoordinatorDeps = {
     reclusterer: ClusterReclusterer;
     stopCoordinator: InstanceStopCoordinator;
     events: TypedEmitter<BridgeEvents>;
+    gate: IdentifyGate;
 };
 
 /** Runs one restart routine at a time against the connected instances. */
@@ -136,14 +138,23 @@ export class RestartCoordinator {
             this.deps.events.on('INSTANCE_DISCONNECTED', onDisconnect);
         });
 
-        try {
+        let aborted = false;
+        const moveAndDrain = async () => {
             for (const cluster of this.deps.calculator.getClusterForConnection(from)) {
-                if (cluster.connectionStatus === BridgeClusterConnectionStatus.CONNECTED) this.deps.reclusterer.steal(cluster, to);
+                if (cluster.connectionStatus !== BridgeClusterConnectionStatus.CONNECTED) continue;
+                await this.deps.gate.acquire(cluster.shardList);
+                if (aborted) return;
+                this.deps.reclusterer.steal(cluster, to);
             }
-            await Promise.race([this.deps.stopCoordinator.waitForDrain(from, timeoutMs), disconnected]);
+            await this.deps.stopCoordinator.waitForDrain(from, timeoutMs);
+        };
+
+        try {
+            await Promise.race([moveAndDrain(), disconnected]);
         } catch (err) {
             throw new RestartStepError('move', fromID, err);
         } finally {
+            aborted = true;
             this.deps.events.off('INSTANCE_DISCONNECTED', onDisconnect!);
         }
 

@@ -20,8 +20,9 @@ function setup(instances: BridgeInstanceConnection[], clusters = 3) {
     const events = new TypedEmitter<BridgeEvents>();
     const reclusterer = { steal: vi.fn() };
     const stopCoordinator = { stop: vi.fn().mockResolvedValue(undefined), waitForDrain: vi.fn().mockResolvedValue(undefined) };
-    const coordinator = new RestartCoordinator({ connectedInstances, calculator, reclusterer: reclusterer as any, stopCoordinator: stopCoordinator as any, events });
-    return { coordinator, connectedInstances, calculator, events, reclusterer, stopCoordinator };
+    const gate = { acquire: vi.fn().mockResolvedValue(undefined) };
+    const coordinator = new RestartCoordinator({ connectedInstances, calculator, reclusterer: reclusterer as any, stopCoordinator: stopCoordinator as any, events, gate: gate as any });
+    return { coordinator, connectedInstances, calculator, events, reclusterer, stopCoordinator, gate };
 }
 
 /** Runs `body` as a routine and returns the routine's outcome. */
@@ -95,6 +96,26 @@ describe('RestartCoordinator', () => {
         expect(reclusterer.steal).toHaveBeenCalledWith(calculator.clusterList[0], b);
         expect(reclusterer.steal).toHaveBeenCalledWith(calculator.clusterList[1], b);
         expect(stopCoordinator.waitForDrain).toHaveBeenCalledWith(a, 5000);
+    });
+
+    it('moveAllClusters waits for the gate before each cluster and stops once aborted', async () => {
+        const a = fakeInstance(1);
+        const b = fakeInstance(2);
+        const { coordinator, calculator, events, gate, reclusterer } = setup([a, b]);
+        calculator.clusterList.forEach(c => { c.setConnection(a); c.markStarting(); c.markConnected(); });
+        let openGate!: () => void;
+        gate.acquire.mockResolvedValueOnce(undefined).mockReturnValueOnce(new Promise<void>(r => { openGate = r; }));
+
+        const result = runWith(coordinator, ctx => ctx.moveAllClusters(1, 2));
+        await vi.waitFor(() => expect(gate.acquire).toHaveBeenCalledTimes(2));
+        expect(reclusterer.steal).toHaveBeenCalledTimes(1);
+
+        events.emit('INSTANCE_DISCONNECTED', b, 'gone');
+        await expect(result).rejects.toBeInstanceOf(RestartStepError);
+        openGate();
+        await Promise.resolve();
+
+        expect(reclusterer.steal).toHaveBeenCalledTimes(1);
     });
 
     it('moveAllClusters aborts immediately when the target disconnects', async () => {

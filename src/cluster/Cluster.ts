@@ -2,7 +2,7 @@ import { Client, GatewayIntentsString } from "discord.js";
 import { EventManager } from "../transport/EventManager";
 import { ChildProcessTransport } from "../transport/ChildProcessTransport";
 import { ProcessMessage, ProcessRequest } from "../protocol/process";
-import { serializeError } from "../protocol/shared";
+import { INVALID_SHARD_CLOSE_CODE, INVALID_SHARD_COUNT_ERROR, serializeError } from "../protocol/shared";
 import { decodeEnv } from "../protocol/processEnv";
 import { createClusterRequestHandler, CustomRequestHandler } from "./ClusterRequestHandler";
 
@@ -22,7 +22,7 @@ export class Cluster<T extends Client> {
 
     public eventManager: EventManager<ProcessMessage, ProcessRequest>;
 
-    public client!: T;
+    private _client!: T;
 
     public onSelfDestruct?: () => void | Promise<void>;
 
@@ -58,6 +58,18 @@ export class Cluster<T extends Client> {
         };
         process.once('SIGTERM', gracefulExit);
         process.once('SIGINT', gracefulExit);
+    }
+
+    get client(): T {
+        return this._client;
+    }
+
+    set client(client: T) {
+        this._client = client;
+        // discord.js gives up on this close code without an error, the cluster would just never become ready.
+        client.on?.('shardDisconnect', ({ code }) => {
+            if (code === INVALID_SHARD_CLOSE_CODE) this.triggerError(new Error(INVALID_SHARD_COUNT_ERROR)).catch(() => {});
+        });
     }
 
     /** Builds the Cluster for this child process from the env ProcessSpawner set (see protocol/processEnv.ts). */

@@ -4,6 +4,7 @@ import { BridgeInstanceConnection } from "./BridgeInstanceConnection";
 import { BridgeClusterConnectionStatus } from "../domain/BridgeClusterState";
 import { TypedEmitter } from "../general/TypedEmitter";
 import type { BridgeEvents } from "./Bridge";
+import { IdentifyGate } from "./IdentifyGate";
 
 export const DRAIN_POLL_INTERVAL_MS = 1000;
 
@@ -14,6 +15,7 @@ export class InstanceStopCoordinator {
         private readonly reclusterer: ClusterReclusterer,
         private readonly connectedInstances: Map<string, BridgeInstanceConnection>,
         private readonly events: TypedEmitter<BridgeEvents>,
+        private readonly gate: IdentifyGate,
     ) {}
 
     async stop(connection: BridgeInstanceConnection, recluster = true, drainTimeoutMs?: number): Promise<void> {
@@ -45,6 +47,8 @@ export class InstanceStopCoordinator {
                 continue;
             }
 
+            await this.gate.acquire(clusterToSteal.shardList);
+            if (clusterToSteal.connectionStatus !== BridgeClusterConnectionStatus.CONNECTED) continue;
             this.reclusterer.steal(clusterToSteal, least);
         }
 

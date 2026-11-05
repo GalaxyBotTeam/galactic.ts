@@ -18,6 +18,7 @@ export * from './bridge/BridgeClusterConnection';
 export * from './bridge/BridgeInstanceConnection';
 export * from './bridge/RestartCoordinator';
 export * from './bridge/restartRoutines';
+export * from './bridge/GatewayInfo';
 
 export * from './cluster/Cluster';
 export * from './cluster/ClusterProcess';
