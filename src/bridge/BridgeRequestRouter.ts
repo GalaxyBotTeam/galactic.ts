@@ -1,7 +1,6 @@
 import { BridgeInstanceConnection } from "./BridgeInstanceConnection";
 import { ClusterCalculator } from "./ClusterCalculator";
 import { ShardingUtil } from "../domain/ShardingUtil";
-import { BridgeClusterConnectionStatus } from "../domain/BridgeClusterState";
 import { BridgeRequest, SelfCheckResponse } from "../protocol/bridge";
 import { rejectUnknownRequest } from "../protocol/shared";
 
@@ -21,13 +20,11 @@ export function createBridgeRequestHandler(connection: BridgeInstanceConnection,
                 if (!cluster) {
                     return Promise.reject(new Error('cluster not found'));
                 }
-                if (cluster.connectionStatus != BridgeClusterConnectionStatus.CONNECTED) {
+                const serving = cluster.servingConnection;
+                if (!serving) {
                     return Promise.reject(new Error('cluster not connected.'));
                 }
-                if (!cluster.connection?.eventManager) {
-                    return Promise.reject(new Error('no connection defined.'));
-                }
-                return cluster.connection.eventManager.request({
+                return serving.eventManager.request({
                     type: 'REDIRECT_REQUEST_TO_GUILD',
                     clusterID: cluster.clusterID,
                     guildID: message.guildID,
