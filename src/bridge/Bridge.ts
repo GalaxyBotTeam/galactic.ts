@@ -75,7 +75,7 @@ export class Bridge {
     }
 
     private onInstanceConnected(connection: BridgeInstanceConnection): void {
-        this.restartCoordinator.restoreStandbyRole(connection);
+        this.restartCoordinator.syncStandbyRole(connection);
         connection.eventManager.onMessage(createBridgeMessageHandler(connection, {
             calculator: this.clusterCalculator,
             events: this.events,

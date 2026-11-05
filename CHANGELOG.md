@@ -13,6 +13,11 @@
 
 - `RestartContext.transferStandby(fromID, toID)` for custom routines.
 - `BridgeInstanceConnection.setStandby()`; `standby` is now a getter.
+- `INSTANCE_STANDBY` message and `ManagedInstance` event: the Bridge reports the current role on
+  every connect and role change. `ManagedInstance.standby` follows it. Instances on an older
+  version ignore the message with a warning.
+- `RESTART_STEP` reports `{ kind: 'standby', from, to }`. Handle this kind if you switch over
+  `step.kind`.
 
 ## 3.0.0-pre.2 (restart routines)
 

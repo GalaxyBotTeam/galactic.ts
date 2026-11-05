@@ -43,7 +43,7 @@ export class ManagedInstance extends BotInstance {
 
     private dev: boolean = false;
 
-    private standby: boolean = false;
+    private _standby: boolean = false;
 
     constructor(entryPoint: string, host: string, port: number, instanceID: number, data: unknown, execArgv?: string[], dev?: boolean, env?: NodeJS.ProcessEnv, standby?: boolean) {
         super(entryPoint, execArgv, env);
@@ -53,7 +53,7 @@ export class ManagedInstance extends BotInstance {
         this.instanceID = instanceID;
         this.data = data;
         this.dev = dev || false;
-        this.standby = standby || false;
+        this._standby = standby || false;
 
         this.instance = new Client({
             host: this.host,
@@ -76,7 +76,7 @@ export class ManagedInstance extends BotInstance {
         this.instance.connect({
             id: this.instanceID,
             dev: this.dev,
-            standby: this.standby,
+            standby: this._standby,
             data: this.data,
         }).then(_ => {
             this.events.emit('BRIDGE_CONNECTION_ESTABLISHED');
@@ -100,6 +100,11 @@ export class ManagedInstance extends BotInstance {
         }).catch((err) => {
             this.events.emit('ERROR', `Could not connect to bridge ${this.host}:${this.port}: ${err}`);
         });
+    }
+
+    /** The configured flag until the bridge reports the role, then whatever the bridge says. */
+    get standby(): boolean {
+        return this._standby;
     }
 
     private markConnected(): void {
@@ -183,6 +188,10 @@ export class ManagedInstance extends BotInstance {
                 return;
             case 'INSTANCE_STOP':
                 this.events.emit('INSTANCE_STOP');
+                return;
+            case 'INSTANCE_STANDBY':
+                this._standby = message.data.standby;
+                this.events.emit('INSTANCE_STANDBY', message.data.standby);
                 return;
             case 'CLUSTER_SPAWNED':
             case 'CLUSTER_READY':

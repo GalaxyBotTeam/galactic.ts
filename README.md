@@ -144,7 +144,11 @@ Mark the initial standby with the last `ManagedInstance` constructor argument:
 new ManagedInstance(entryPoint, host, port, instanceID, data, execArgv, false /* dev */, undefined /* env */, true /* standby */);
 ```
 
-The flag only sets the starting point. Once a routine has moved the role, the Bridge keeps it in memory and it wins over the flag when an instance reconnects, until the Bridge restarts. A Bridge restart recreates all clusters, and the flags count again. Check `standby` on `bridge.connectedInstances` to see the current holder.
+The flag only sets the starting point. Once a routine has moved the role, the Bridge keeps it in memory and it wins over the flag when an instance reconnects, until the Bridge restarts. A Bridge restart recreates all clusters, and the flags count again. The current role is available as `standby` on `bridge.connectedInstances` and on the `ManagedInstance`, which also emits `INSTANCE_STANDBY` on every connect and role change:
+
+```ts
+instance.on('INSTANCE_STANDBY', (standby) => console.log(standby ? 'Now the standby' : 'Active'));
+```
 
 Both routines take an optional `InstanceOrder`, e.g. to restart host by host:
 

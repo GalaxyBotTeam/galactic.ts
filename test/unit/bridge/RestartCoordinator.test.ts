@@ -127,26 +127,60 @@ describe('RestartCoordinator', () => {
         expect(spare.standby).toBe(false);
     });
 
-    it('restoreStandbyRole beats the flag an instance reconnects with', async () => {
+    it('transferStandby tells both instances their role and reports the step', async () => {
+        const a = fakeInstance(1);
+        const spare = fakeInstance(9, false, true);
+        const sendA = vi.spyOn(a.eventManager, 'send');
+        const sendSpare = vi.spyOn(spare.eventManager, 'send');
+        const { coordinator, events } = setup([a, spare]);
+        const steps: unknown[] = [];
+        events.on('RESTART_STEP', (step, status) => steps.push([step, status]));
+
+        await runWith(coordinator, async ctx => ctx.transferStandby(9, 1));
+
+        expect(sendA).toHaveBeenCalledWith({ type: 'INSTANCE_STANDBY', data: { standby: true } });
+        expect(sendSpare).toHaveBeenCalledWith({ type: 'INSTANCE_STANDBY', data: { standby: false } });
+        expect(steps).toEqual([[{ kind: 'standby', from: 9, to: 1 }, 'done']]);
+    });
+
+    it('a failed role report surfaces as ERROR', async () => {
+        const a = fakeInstance(1);
+        vi.spyOn(a.eventManager, 'send').mockRejectedValue(new Error('gone'));
+        const { coordinator, events } = setup([a]);
+        const errors: string[] = [];
+        events.on('ERROR', (e) => errors.push(e));
+
+        coordinator.syncStandbyRole(a);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(errors).toEqual([expect.stringContaining('instance 1')]);
+    });
+
+    it('syncStandbyRole beats the flag an instance reconnects with and reports it', async () => {
         const { coordinator } = setup([fakeInstance(1), fakeInstance(9, false, true)]);
         await runWith(coordinator, async ctx => ctx.transferStandby(9, 1));
 
         const newSpare = fakeInstance(1, false, false);
         const formerSpare = fakeInstance(9, false, true);
-        coordinator.restoreStandbyRole(newSpare);
-        coordinator.restoreStandbyRole(formerSpare);
+        const send = vi.spyOn(formerSpare.eventManager, 'send');
+        coordinator.syncStandbyRole(newSpare);
+        coordinator.syncStandbyRole(formerSpare);
 
         expect(newSpare.standby).toBe(true);
         expect(formerSpare.standby).toBe(false);
+        expect(send).toHaveBeenCalledWith({ type: 'INSTANCE_STANDBY', data: { standby: false } });
     });
 
-    it('restoreStandbyRole keeps the flag of an instance without a transferred role', () => {
+    it('syncStandbyRole reports the flag of an instance without a transferred role', () => {
         const { coordinator } = setup([]);
         const spare = fakeInstance(9, false, true);
+        const send = vi.spyOn(spare.eventManager, 'send');
 
-        coordinator.restoreStandbyRole(spare);
+        coordinator.syncStandbyRole(spare);
 
         expect(spare.standby).toBe(true);
+        expect(send).toHaveBeenCalledWith({ type: 'INSTANCE_STANDBY', data: { standby: true } });
     });
 
     it('rejects a second run while one is running', async () => {

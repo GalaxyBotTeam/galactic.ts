@@ -21,6 +21,18 @@ describe('ManagedInstance bridge connection state', () => {
         expect(instance.state.current).toBe(ManagedInstanceConnectionStatus.DISCONNECTED);
     });
 
+    it('INSTANCE_STANDBY updates the role and emits it', () => {
+        const instance = make();
+        const listener = vi.fn();
+        instance.on('INSTANCE_STANDBY', listener);
+        expect(instance.standby).toBe(false);
+
+        instance.onBridgeMessage({ type: 'INSTANCE_STANDBY', data: { standby: true } });
+
+        expect(instance.standby).toBe(true);
+        expect(listener).toHaveBeenCalledWith(true);
+    });
+
     it('markConnected is idempotent', () => {
         const instance = make();
         instance.markConnected();

@@ -13,7 +13,11 @@ export type RestartRoutine = (ctx: RestartContext) => Promise<void>;
 
 export type RestartOptions = { stepTimeoutMs?: number };
 
-export type RestartStep = { kind: 'move', from: number, to: number } | { kind: 'restart', instanceID: number };
+export type RestartStep =
+    | { kind: 'move', from: number, to: number }
+    | { kind: 'restart', instanceID: number }
+    /** Happens at once, so it is only reported as `done`. */
+    | { kind: 'standby', from: number, to: number };
 
 /** Building blocks a restart routine works with; instances are addressed by ID because a restart replaces the connection object. */
 export interface RestartContext {
@@ -60,10 +64,17 @@ export class RestartCoordinator {
         return this._running;
     }
 
-    /** A reconnecting instance announces its configured flag, so restore the role it held. */
-    restoreStandbyRole(connection: BridgeInstanceConnection): void {
+    /** A connecting instance announces its configured flag, so restore the role it held and tell it which one counts. */
+    syncStandbyRole(connection: BridgeInstanceConnection): void {
         const role = this.standbyRoles.get(connection.instanceID);
         if (role !== undefined) connection.setStandby(role);
+        this.reportStandbyRole(connection);
+    }
+
+    private reportStandbyRole(connection: BridgeInstanceConnection): void {
+        connection.eventManager.send({ type: 'INSTANCE_STANDBY', data: { standby: connection.standby } }).catch((err) => {
+            this.deps.events.emit('ERROR', `Reporting the standby role to instance ${connection.instanceID} failed: ${err}`);
+        });
     }
 
     async run(routine: RestartRoutine, options: RestartOptions = {}): Promise<void> {
@@ -91,13 +102,17 @@ export class RestartCoordinator {
             transferStandby: (from, to) => {
                 this.setStandbyRole(from, false);
                 this.setStandbyRole(to, true);
+                this.deps.events.emit('RESTART_STEP', { kind: 'standby', from, to }, 'done');
             },
         };
     }
 
     private setStandbyRole(instanceID: number, standby: boolean): void {
         this.standbyRoles.set(instanceID, standby);
-        this.find(instanceID)?.setStandby(standby);
+        const connection = this.find(instanceID);
+        if (!connection) return;
+        connection.setStandby(standby);
+        this.reportStandbyRole(connection);
     }
 
     private find(instanceID: number): BridgeInstanceConnection | undefined {
