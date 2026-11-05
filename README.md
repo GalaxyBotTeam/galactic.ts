@@ -172,6 +172,12 @@ On start and before every restart routine the Bridge reads `GET /gateway/bot` an
 
 The shard count itself stays your configuration: `shardsPerCluster * clusterToStart`. For this to work, assign `cluster.client` before the client logs in.
 
+### Watching Clusters Start and Move
+
+The Bridge also collects heartbeats while a cluster starts. `cluster.heartbeatResponse.shardPings` lists every shard with its discord.js status (1 Connecting, 7 Identifying, 6 WaitingForGuilds, 0 Ready) as soon as the cluster has a client.
+
+A moving cluster keeps serving. `cluster.servingConnection` is the old instance until the new cluster is ready, and `Bridge.sendRequestToGuild` and requests between clusters follow it. `connectionStatus` is `starting` during a move as well as on a first start, so use `servingConnection` to tell whether a cluster can be reached. When the new cluster is ready, the old process stops: requests it has not answered within about 250 ms fail and can be retried.
+
 ## Integration with Discord.js
 
 galactic is fully compatible with the latest version of discord.js.  

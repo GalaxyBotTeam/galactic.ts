@@ -52,6 +52,9 @@ export function createBridgeMessageHandler(connection: BridgeInstanceConnection,
                     deps.events.emit('CLUSTER_STOPPED', cluster);
                     cluster.setConnection(undefined);
                 }
+                // The old process died during a move: nothing answers until the new one is ready.
+                const moving = deps.calculator.getOldClusterForConnection(connection).find(c => c.clusterID === message.data.id);
+                if (moving) moving.oldConnection = undefined;
                 return;
             }
             case 'INSTANCE_STOP':

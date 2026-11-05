@@ -1,9 +1,19 @@
 # Changelog
 
-## 3.0.0-pre.4 (large bot sharding)
+## 3.0.0-pre.4 (large bot sharding, moves without downtime)
+
+Update the Bridge and all instances together: the Bridge now asks starting clusters for
+heartbeats, and a cluster on an older version crashes if that happens before it has a client.
 
 ### Added
 
+- `BridgeClusterConnection.servingConnection`: the instance that answers for a cluster. During a
+  move that is the old instance until the new cluster is ready. Use it instead of checking
+  `connectionStatus` to tell whether a cluster can be reached: `starting` covers a first start,
+  where nothing answers, as well as a move, where the old process still does.
+- Heartbeats also run while a cluster starts, so `heartbeatResponse.shardPings` shows every shard
+  on its way to ready, with discord.js' status. It stays empty until the cluster has a client. A
+  starting cluster that does not answer yet is not counted as a missed heartbeat.
 - The Bridge reads `GET /gateway/bot` on start and before every restart routine and emits
   `GATEWAY_INFO`. `ERROR` reports too few shards, too few session starts left, and on large bot
   sharding a shard count that is not a multiple of `max_concurrency`.
@@ -19,6 +29,15 @@
 - `moveAllClusters`, draining and `Bridge.moveCluster` wait for their identify slot instead of
   starting all clusters at once.
 - `Bridge.restartAll` is `async` and reads the gateway limits first.
+- `Bridge.sendRequestToGuild` and requests between clusters go to `servingConnection`, so they
+  keep working during a move. `sendRequestToGuild` now rejects during a first start instead of
+  reaching a process that is not ready. Requests the old process has not answered about 250 ms
+  after the new cluster is ready still fail.
+
+### Fixed
+
+- A cluster answers heartbeats before it has a client instead of crashing.
+- `oldConnection` is cleared when the old process or its instance goes away during a move.
 
 ## 3.0.0-pre.3 (rotating standby)
 

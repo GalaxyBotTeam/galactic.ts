@@ -21,13 +21,13 @@ function fakeConnection() {
 }
 
 function setup(cluster: ReturnType<typeof fakeCluster>) {
-    const calculator = { getClusterForConnection: vi.fn().mockReturnValue([cluster]) } as any;
+    const calculator = { getClusterForConnection: vi.fn().mockReturnValue([cluster]), getOldClusterForConnection: vi.fn().mockReturnValue([]) } as any;
     const events = new TypedEmitter<BridgeEvents>();
     const onInstanceStop = vi.fn();
     const connection = fakeConnection();
     const onInvalidShardCount = vi.fn();
     const handler = createBridgeMessageHandler(connection, { calculator, events, onInstanceStop, onInvalidShardCount });
-    return { handler, events, onInstanceStop, onInvalidShardCount, connection };
+    return { handler, events, onInstanceStop, onInvalidShardCount, connection, calculator };
 }
 
 describe('BridgeMessageRouter', () => {
@@ -84,6 +84,19 @@ describe('BridgeMessageRouter', () => {
 
         expect(listener).toHaveBeenCalledWith(cluster);
         expect(cluster.setConnection).toHaveBeenCalledWith(undefined);
+    });
+
+    it('CLUSTER_STOPPED from the old instance of a move drops it as the serving instance', () => {
+        const cluster = fakeCluster(1);
+        cluster.oldConnection = {};
+        const { handler, calculator } = setup(cluster);
+        calculator.getClusterForConnection.mockReturnValue([]);
+        calculator.getOldClusterForConnection.mockReturnValue([cluster]);
+
+        handler({ type: 'CLUSTER_STOPPED', data: { id: 1 } });
+
+        expect(cluster.oldConnection).toBeUndefined();
+        expect(cluster.setConnection).not.toHaveBeenCalled();
     });
 
     it('CLUSTER_STOPPED reports a shard count Discord rejected', () => {

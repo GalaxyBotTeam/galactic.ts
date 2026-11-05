@@ -29,6 +29,32 @@ describe('sampleHeartbeat', () => {
     });
 });
 
+describe('sampleHeartbeat on a starting cluster', () => {
+    const sample = async (client: any) => {
+        vi.useFakeTimers();
+        try {
+            const promise = sampleHeartbeat(client);
+            await vi.advanceTimersByTimeAsync(500);
+            return await promise;
+        } finally {
+            vi.useRealTimers();
+        }
+    };
+
+    it('answers before the client exists', async () => {
+        const result = await sample(undefined);
+
+        expect(result.ping).toBe(-1);
+        expect(result.shardPings).toEqual([]);
+    });
+
+    it('reports no ping while the client has no shards', async () => {
+        const result = await sample(fakeClient({ ws: { ping: NaN, shards: new Map() } }));
+
+        expect(result.ping).toBe(-1);
+    });
+});
+
 describe('createClusterRequestHandler', () => {
     it('CUSTOM delegates to the registered custom handler', async () => {
         const client = fakeClient();
