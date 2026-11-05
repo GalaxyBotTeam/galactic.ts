@@ -116,6 +116,39 @@ describe('RestartCoordinator', () => {
         expect(reclusterer.steal).not.toHaveBeenCalled();
     });
 
+    it('transferStandby swaps the role on both connections', async () => {
+        const a = fakeInstance(1);
+        const spare = fakeInstance(9, false, true);
+        const { coordinator } = setup([a, spare]);
+
+        await runWith(coordinator, async ctx => ctx.transferStandby(9, 1));
+
+        expect(a.standby).toBe(true);
+        expect(spare.standby).toBe(false);
+    });
+
+    it('restoreStandbyRole beats the flag an instance reconnects with', async () => {
+        const { coordinator } = setup([fakeInstance(1), fakeInstance(9, false, true)]);
+        await runWith(coordinator, async ctx => ctx.transferStandby(9, 1));
+
+        const newSpare = fakeInstance(1, false, false);
+        const formerSpare = fakeInstance(9, false, true);
+        coordinator.restoreStandbyRole(newSpare);
+        coordinator.restoreStandbyRole(formerSpare);
+
+        expect(newSpare.standby).toBe(true);
+        expect(formerSpare.standby).toBe(false);
+    });
+
+    it('restoreStandbyRole keeps the flag of an instance without a transferred role', () => {
+        const { coordinator } = setup([]);
+        const spare = fakeInstance(9, false, true);
+
+        coordinator.restoreStandbyRole(spare);
+
+        expect(spare.standby).toBe(true);
+    });
+
     it('rejects a second run while one is running', async () => {
         const { coordinator } = setup([fakeInstance(1)]);
         let release!: () => void;

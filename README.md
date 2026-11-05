@@ -136,13 +136,15 @@ Typical distributed setup:
 `bridge.restartAll(routine?)` restarts every connected instance. galactic stops each instance; your supervisor (systemd, Docker, pm2, …) must start it again so it reconnects with the same `instanceID`. Each step waits for that reconnect. Rebalancing pauses while a routine runs, and only one routine runs at a time.
 
 - `sequentialRestart()` (default): drains and restarts the instances one after another.
-- `rollingReload()`: needs exactly one **standby** instance. The balancer never gives clusters to a standby. The routine restarts the empty standby first, then moves each instance's clusters onto the previously restarted instance before restarting it. At the end the standby is empty again.
+- `rollingReload()`: needs exactly one **standby** instance. The balancer never gives clusters to a standby. The routine restarts the empty standby first, then moves each instance's clusters onto the previously restarted instance before restarting it. Every cluster moves exactly once. The standby role follows the empty instance, so the last restarted instance is the new standby and the former one keeps its clusters.
 
-Mark an instance as standby with the last `ManagedInstance` constructor argument:
+Mark the initial standby with the last `ManagedInstance` constructor argument:
 
 ```ts
 new ManagedInstance(entryPoint, host, port, instanceID, data, execArgv, false /* dev */, undefined /* env */, true /* standby */);
 ```
+
+The flag only sets the starting point. Once a routine has moved the role, the Bridge keeps it in memory and it wins over the flag when an instance reconnects, until the Bridge restarts. A Bridge restart recreates all clusters, and the flags count again. Check `standby` on `bridge.connectedInstances` to see the current holder.
 
 Both routines take an optional `InstanceOrder`, e.g. to restart host by host:
 
