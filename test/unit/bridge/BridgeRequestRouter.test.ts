@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createBridgeRequestHandler } from '../../../src/bridge/BridgeRequestRouter';
-import { BridgeClusterConnectionStatus } from '../../../src/domain/BridgeClusterState';
+import { BridgeClusterConnection } from '../../../src/bridge/BridgeClusterConnection';
+
+const fakeInstance = (response = 'guild-response') => ({ eventManager: { request: vi.fn().mockResolvedValue(response) } }) as any;
 
 function fakeConnectedCluster(clusterID: number) {
-    return {
-        clusterID,
-        connectionStatus: BridgeClusterConnectionStatus.CONNECTED,
-        connection: { eventManager: { request: vi.fn().mockResolvedValue('guild-response') } },
-    };
+    const cluster = new BridgeClusterConnection(clusterID, [0]);
+    cluster.setConnection(fakeInstance());
+    cluster.markStarting();
+    cluster.markConnected();
+    return cluster;
 }
 
 function setup(overrides: Partial<{ calculator: any; connectedInstances: Map<string, any> }> = {}) {
@@ -30,7 +32,7 @@ describe('BridgeRequestRouter', () => {
         const result = await handler({ type: 'REDIRECT_REQUEST_TO_GUILD', guildID: '123', data: { x: 1 } }, 5000);
 
         expect(result).toBe('guild-response');
-        expect(cluster.connection.eventManager.request).toHaveBeenCalledWith(
+        expect(cluster.connection!.eventManager.request).toHaveBeenCalledWith(
             { type: 'REDIRECT_REQUEST_TO_GUILD', clusterID: 1, guildID: '123', data: { x: 1 } }, 5000);
     });
 
@@ -40,12 +42,24 @@ describe('BridgeRequestRouter', () => {
         await expect(handler({ type: 'REDIRECT_REQUEST_TO_GUILD', guildID: '123', data: {} }, 5000)).rejects.toThrow('cluster not found');
     });
 
-    it('REDIRECT_REQUEST_TO_GUILD rejects when the owning cluster is not CONNECTED', async () => {
-        const cluster = fakeConnectedCluster(1);
-        cluster.connectionStatus = BridgeClusterConnectionStatus.STARTING;
+    it('REDIRECT_REQUEST_TO_GUILD rejects while a cluster starts for the first time', async () => {
+        const cluster = new BridgeClusterConnection(1, [0]);
+        cluster.setConnection(fakeInstance());
+        cluster.markStarting();
         const { handler } = setup({ calculator: { getClusterOfShard: vi.fn().mockReturnValue(cluster) } });
 
         await expect(handler({ type: 'REDIRECT_REQUEST_TO_GUILD', guildID: '123', data: {} }, 5000)).rejects.toThrow('not connected');
+    });
+
+    it('REDIRECT_REQUEST_TO_GUILD stays on the old instance while the cluster moves', async () => {
+        const cluster = fakeConnectedCluster(1);
+        const newInstance = fakeInstance('new');
+        cluster.reclustering(newInstance);
+        cluster.markStarting();
+        const { handler } = setup({ calculator: { getClusterOfShard: vi.fn().mockReturnValue(cluster) } });
+
+        await expect(handler({ type: 'REDIRECT_REQUEST_TO_GUILD', guildID: '123', data: {} }, 5000)).resolves.toBe('guild-response');
+        expect(newInstance.eventManager.request).not.toHaveBeenCalled();
     });
 
     it('BROADCAST_EVAL fans out to every connected instance and flattens the results', async () => {

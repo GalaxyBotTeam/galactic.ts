@@ -31,8 +31,11 @@ function runBroadcastEval<T extends Client>(client: T, source: string): unknown 
     return fn(client);
 }
 
-/** Samples CPU/memory/shard-ping data over a real 500ms window (fixes the previous fire-and-forget bug). */
-export function sampleHeartbeat<T extends Client>(client: T): Promise<HeartbeatResponse> {
+/**
+ * Samples CPU/memory/shard-ping data over a real 500ms window (fixes the previous fire-and-forget bug).
+ * The Bridge also asks clusters that are still starting, before they have a client or any shards.
+ */
+export function sampleHeartbeat<T extends Client>(client: T | undefined): Promise<HeartbeatResponse> {
     return new Promise((resolve) => {
         const startTime = process.hrtime.bigint();
         const startUsage = process.cpuUsage();
@@ -48,8 +51,8 @@ export function sampleHeartbeat<T extends Client>(client: T): Promise<HeartbeatR
 
             const shardPings: ShardPing[] = [];
             try {
-                const shards = client.ws.shards;
-                if (shards) {
+                const shards = client?.ws.shards;
+                if (client && shards) {
                     shards.forEach((shard) => {
                         const entry: ShardPing = {
                             id: shard.id,
@@ -75,7 +78,8 @@ export function sampleHeartbeat<T extends Client>(client: T): Promise<HeartbeatR
                     memoryPercent: ((process.memoryUsage().heapUsed / process.memoryUsage().heapTotal) * 100).toFixed(2) + '%',
                     usage: (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2) + 'MB',
                 },
-                ping: client.ws.ping,
+                // NaN without shards, which would not survive the trip to the Bridge.
+                ping: client?.ws.ping || -1,
                 shardPings,
             });
         }, 500);

@@ -61,6 +61,12 @@ export class BridgeClusterConnection {
         this.connection = undefined;
     }
 
+    /** The instance that answers for this cluster: during a move the old one, until the new one is ready. */
+    get servingConnection(): BridgeInstanceConnection | undefined {
+        if (this.oldConnection) return this.oldConnection;
+        return this.connectionStatus === BridgeClusterConnectionStatus.CONNECTED ? this.connection : undefined;
+    }
+
     isUsed(): boolean {
         return this.connection != undefined && this.connectionStatus !== BridgeClusterConnectionStatus.DISCONNECTED;
     }

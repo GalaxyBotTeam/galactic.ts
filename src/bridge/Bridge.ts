@@ -118,6 +118,9 @@ export class Bridge {
         for (const cluster of this.clusterCalculator.getClusterForConnection(connection)) {
             this.clusterCalculator.clearClusterConnection(cluster.clusterID);
         }
+        for (const cluster of this.clusterCalculator.getOldClusterForConnection(connection)) {
+            cluster.oldConnection = undefined;
+        }
         this.events.emit('INSTANCE_DISCONNECTED', connection, reason);
     }
 
@@ -151,16 +154,22 @@ export class Bridge {
 
     private heartbeat(): void {
         this.clusterCalculator.clusterList.forEach((cluster) => {
-            if (!cluster.connection || cluster.connectionStatus !== BridgeClusterConnectionStatus.CONNECTED || cluster.heartbeatPending) return;
+            const { connection, connectionStatus } = cluster;
+            const starting = connectionStatus === BridgeClusterConnectionStatus.STARTING;
+            if (!connection || cluster.heartbeatPending || (!starting && connectionStatus !== BridgeClusterConnectionStatus.CONNECTED)) return;
 
             cluster.heartbeatPending = true;
-            cluster.connection.eventManager.request<HeartbeatResponse>({
+            connection.eventManager.request<HeartbeatResponse>({
                 type: 'CLUSTER_HEARTBEAT',
                 data: { clusterID: cluster.clusterID },
             }, HEARTBEAT_TIMEOUT_MS).then((r) => {
                 cluster.removeMissedHeartbeat();
-                cluster.heartbeatResponse = r;
+                // The cluster may have moved while this answer was on its way.
+                if (cluster.connection === connection) cluster.heartbeatResponse = r;
             }).catch((err) => {
+                // A process that is still booting may not answer yet, that is no failure.
+                if (starting) return;
+
                 this.events.emit('CLUSTER_HEARTBEAT_FAILED', cluster, err);
                 cluster.addMissedHeartbeat();
 
@@ -230,11 +239,12 @@ export class Bridge {
     }
 
     sendRequestToGuild(cluster: BridgeClusterConnection, guildID: Snowflake, data: unknown, timeout = 5000): Promise<unknown> {
-        if (!cluster.connection) {
+        const serving = cluster.servingConnection;
+        if (!serving) {
             return Promise.reject(new Error("No connection defined for cluster " + cluster.clusterID));
         }
 
-        return cluster.connection.eventManager.request({
+        return serving.eventManager.request({
             type: 'REDIRECT_REQUEST_TO_GUILD',
             clusterID: cluster.clusterID,
             guildID: guildID,
