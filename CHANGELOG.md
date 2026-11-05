@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.0.0-pre.4 (large bot sharding, moves without downtime)
+## 3.0.0-pre.5 (large bot sharding, moves without downtime)
 
 Update the Bridge and all instances together: the Bridge now asks starting clusters for
 heartbeats, and a cluster on an older version crashes if that happens before it has a client.
@@ -38,6 +38,10 @@ heartbeats, and a cluster on an older version crashes if that happens before it 
 
 - A cluster answers heartbeats before it has a client instead of crashing.
 - `oldConnection` is cleared when the old process or its instance goes away during a move.
+
+## 3.0.0-pre.4
+
+Do not use. Published from the wrong commit, it contains the code of 3.0.0-pre.2.
 
 ## 3.0.0-pre.3 (rotating standby)
 
