@@ -9,14 +9,22 @@ import type { BridgeEvents } from "./Bridge";
 import { IdentifyGate } from "./IdentifyGate";
 
 export const DEFAULT_RESTART_STEP_TIMEOUT_MS = 10 * 60 * 1000;
+/** Above the 60 second crash timeout of Pelican's Wings, which leaves a server offline if it exits again within it. */
+export const DEFAULT_MIN_RESTART_INTERVAL_MS = 65 * 1000;
 
 export type RestartRoutine = (ctx: RestartContext) => Promise<void>;
 
-export type RestartOptions = { stepTimeoutMs?: number };
+export type RestartOptions = {
+    stepTimeoutMs?: number;
+    /** Minimum time between two stops of the same instance; a restart waits for the rest of it. 0 turns this off. */
+    minRestartIntervalMs?: number;
+};
 
 export type RestartStep =
     | { kind: 'move', from: number, to: number }
     | { kind: 'restart', instanceID: number }
+    /** The instance stopped less than `minRestartIntervalMs` ago, its restart starts in `ms`. */
+    | { kind: 'wait', instanceID: number, ms: number }
     /** Happens at once, so it is only reported as `done`. */
     | { kind: 'standby', from: number, to: number };
 
@@ -58,8 +66,11 @@ export class RestartCoordinator {
     private _running = false;
     /** Roles set by `transferStandby`; an instance's own `standby` flag only counts until it has an entry here. */
     private readonly standbyRoles = new Map<number, boolean>();
+    private readonly lastStops = new Map<number, number>();
 
-    constructor(private readonly deps: RestartCoordinatorDeps) {}
+    constructor(private readonly deps: RestartCoordinatorDeps) {
+        deps.events.on('INSTANCE_STOP', (connection) => this.lastStops.set(connection.instanceID, Date.now()));
+    }
 
     /** True while a routine runs; the Bridge pauses rebalancing meanwhile. */
     get running(): boolean {
@@ -83,13 +94,20 @@ export class RestartCoordinator {
         if (this._running) throw new Error('A restart routine is already running.');
         this._running = true;
         try {
-            await routine(this.createContext(options.stepTimeoutMs ?? DEFAULT_RESTART_STEP_TIMEOUT_MS));
+            const ctx = this.createContext(
+                options.stepTimeoutMs ?? DEFAULT_RESTART_STEP_TIMEOUT_MS,
+                options.minRestartIntervalMs ?? DEFAULT_MIN_RESTART_INTERVAL_MS,
+            );
+            await routine(ctx);
+
+            const missing = [...ctx.instances, ...ctx.standby].filter(id => !this.find(id));
+            if (missing.length > 0) throw new Error(`Restart routine finished, but instance(s) ${missing.join(', ')} are not connected.`);
         } finally {
             this._running = false;
         }
     }
 
-    private createContext(stepTimeoutMs: number): RestartContext {
+    private createContext(stepTimeoutMs: number, minRestartIntervalMs: number): RestartContext {
         const snapshot = this.deps.connectedInstances.values()
             .filter(c => c.connectionStatus === BridgeInstanceConnectionStatus.READY && !c.dev)
             .toArray();
@@ -100,7 +118,7 @@ export class RestartCoordinator {
             standby: ids(true),
             get: (id) => this.find(id),
             moveAllClusters: (from, to) => this.moveAllClusters(from, to, stepTimeoutMs),
-            restart: (id) => this.restart(id, stepTimeoutMs),
+            restart: (id) => this.restart(id, stepTimeoutMs, minRestartIntervalMs),
             transferStandby: (from, to) => {
                 this.setStandbyRole(from, false);
                 this.setStandbyRole(to, true);
@@ -161,9 +179,27 @@ export class RestartCoordinator {
         this.deps.events.emit('RESTART_STEP', step, 'done');
     }
 
-    private async restart(instanceID: number, timeoutMs: number): Promise<void> {
+    private connected(instanceID: number): BridgeInstanceConnection {
         const connection = this.find(instanceID);
         if (!connection) throw new RestartStepError('restart', instanceID, new Error(`Instance ${instanceID} is not connected.`));
+        return connection;
+    }
+
+    private async waitForRestartInterval(instanceID: number, minIntervalMs: number): Promise<void> {
+        const lastStop = this.lastStops.get(instanceID);
+        const ms = lastStop === undefined ? 0 : lastStop + minIntervalMs - Date.now();
+        if (ms <= 0) return;
+
+        const step: RestartStep = { kind: 'wait', instanceID, ms };
+        this.deps.events.emit('RESTART_STEP', step, 'started');
+        await new Promise(resolve => setTimeout(resolve, ms));
+        this.deps.events.emit('RESTART_STEP', step, 'done');
+    }
+
+    private async restart(instanceID: number, timeoutMs: number, minIntervalMs: number): Promise<void> {
+        this.connected(instanceID);
+        await this.waitForRestartInterval(instanceID, minIntervalMs);
+        const connection = this.connected(instanceID);
 
         const step: RestartStep = { kind: 'restart', instanceID };
         this.deps.events.emit('RESTART_STEP', step, 'started');

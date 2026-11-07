@@ -79,6 +79,70 @@ describe('RestartCoordinator', () => {
         expect(stopCoordinator.stop).not.toHaveBeenCalled();
     });
 
+    it('restart waits until the minimum interval since the last stop has passed', async () => {
+        vi.useFakeTimers();
+        const a = fakeInstance(1);
+        const { coordinator, events, stopCoordinator } = setup([a]);
+        const steps: string[] = [];
+        events.on('RESTART_STEP', (step, status) => steps.push(`${step.kind}:${status}`));
+        stopCoordinator.stop.mockImplementation(async (conn: BridgeInstanceConnection) => {
+            events.emit('INSTANCE_STOP', conn);
+            events.emit('INSTANCE_CONNECTED', conn);
+        });
+
+        await runWith(coordinator, ctx => ctx.restart(1));
+        steps.length = 0;
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        const second = coordinator.run(ctx => ctx.restart(1));
+        await vi.advanceTimersByTimeAsync(59_999);
+        expect(stopCoordinator.stop).toHaveBeenCalledTimes(1);
+        expect(steps).toEqual(['wait:started']);
+
+        await vi.advanceTimersByTimeAsync(1);
+        await second;
+        expect(stopCoordinator.stop).toHaveBeenCalledTimes(2);
+        expect(steps).toEqual(['wait:started', 'wait:done', 'restart:started', 'restart:done']);
+    });
+
+    it('restart counts a stop outside of a routine and does not wait with an interval of 0', async () => {
+        const a = fakeInstance(1);
+        const { coordinator, events, stopCoordinator } = setup([a]);
+        events.emit('INSTANCE_STOP', a);
+        stopCoordinator.stop.mockImplementation(async (conn: BridgeInstanceConnection) => {
+            events.emit('INSTANCE_CONNECTED', conn);
+        });
+
+        await coordinator.run(ctx => ctx.restart(1), { minRestartIntervalMs: 0 });
+
+        expect(stopCoordinator.stop).toHaveBeenCalledTimes(1);
+    });
+
+    it('restart of an instance that disconnects during the wait rejects without stopping', async () => {
+        vi.useFakeTimers();
+        const a = fakeInstance(1);
+        const { coordinator, connectedInstances, events, stopCoordinator } = setup([a]);
+        events.emit('INSTANCE_STOP', a);
+
+        const result = coordinator.run(ctx => ctx.restart(1));
+        const assertion = expect(result).rejects.toBeInstanceOf(RestartStepError);
+        connectedInstances.delete(a.connection.id);
+        await vi.advanceTimersByTimeAsync(65_000);
+
+        await assertion;
+        expect(stopCoordinator.stop).not.toHaveBeenCalled();
+    });
+
+    it('run fails when an instance from the snapshot is gone at the end', async () => {
+        const a = fakeInstance(1);
+        const spare = fakeInstance(9, false, true);
+        const { coordinator, connectedInstances } = setup([a, spare]);
+
+        await expect(runWith(coordinator, async () => { connectedInstances.delete(a.connection.id); }))
+            .rejects.toThrow('instance(s) 1 are not connected');
+        expect(coordinator.running).toBe(false);
+    });
+
     it('moveAllClusters steals every CONNECTED cluster and waits for the drain', async () => {
         const a = fakeInstance(1);
         const b = fakeInstance(2);
