@@ -45,7 +45,7 @@ export class ManagedInstance extends BotInstance {
 
     private _standby: boolean = false;
 
-    constructor(entryPoint: string, host: string, port: number, instanceID: number, data: unknown, execArgv?: string[], dev?: boolean, env?: NodeJS.ProcessEnv, standby?: boolean) {
+    constructor(entryPoint: string, host: string, port: number, instanceID: number, data: unknown, execArgv?: string[], dev?: boolean, env?: NodeJS.ProcessEnv) {
         super(entryPoint, execArgv, env);
 
         this.host = host;
@@ -53,7 +53,6 @@ export class ManagedInstance extends BotInstance {
         this.instanceID = instanceID;
         this.data = data;
         this.dev = dev || false;
-        this._standby = standby || false;
 
         this.instance = new Client({
             host: this.host,
@@ -76,7 +75,6 @@ export class ManagedInstance extends BotInstance {
         this.instance.connect({
             id: this.instanceID,
             dev: this.dev,
-            standby: this._standby,
             data: this.data,
         }).then(_ => {
             this.events.emit('BRIDGE_CONNECTION_ESTABLISHED');

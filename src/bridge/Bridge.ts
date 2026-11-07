@@ -38,7 +38,7 @@ export class Bridge {
     private readonly gate = new IdentifyGate();
     private shardCountRejected = false;
 
-    constructor(port: number, token: string, intents: GatewayIntentsString[], shardsPerCluster: number, clusterToStart: number, reclusteringTimeoutInMs: number, ignoreHeartbeatMissed?: boolean) {
+    constructor(port: number, token: string, intents: GatewayIntentsString[], shardsPerCluster: number, clusterToStart: number, reclusteringTimeoutInMs: number, ignoreHeartbeatMissed?: boolean, standbyInstances = 0) {
         this.port = port;
         this.token = token;
         this.intents = intents;
@@ -62,6 +62,7 @@ export class Bridge {
             stopCoordinator: this.stopCoordinator,
             events: this.events,
             gate: this.gate,
+            standbyInstances,
         });
         this.scheduler = new ClusterScheduler({
             checkCreate: () => this.checkCreate(),

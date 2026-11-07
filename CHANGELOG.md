@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.0.0-pre.7 (the Bridge picks the standby)
+
+### Changed
+
+- The Bridge decides which instance is the standby. Pass the number of standbys as the last
+  `Bridge` constructor argument (`standbyInstances`, default 0). A new instance becomes standby
+  while one is missing, unless no other instance could hold clusters.
+
+### Removed
+
+- The `standby` argument of `ManagedInstance` and the matching connect flag. An instance can no
+  longer choose its role. `ManagedInstance.standby` and `INSTANCE_STANDBY` still report it.
+
 ## 3.0.0-pre.6 (safer restart routines)
 
 ### Added

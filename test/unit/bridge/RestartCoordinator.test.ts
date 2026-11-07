@@ -14,14 +14,14 @@ function fakeInstance(instanceID: number, dev = false, standby = false) {
     return new BridgeInstanceConnection(instanceID, fakeConnection(`conn-${instanceID}`), undefined, dev, standby);
 }
 
-function setup(instances: BridgeInstanceConnection[], clusters = 3) {
+function setup(instances: BridgeInstanceConnection[], clusters = 3, standbyInstances = 1) {
     const connectedInstances = new Map(instances.map(i => [i.connection.id, i]));
     const calculator = new ClusterCalculator(clusters, 1);
     const events = new TypedEmitter<BridgeEvents>();
     const reclusterer = { steal: vi.fn() };
     const stopCoordinator = { stop: vi.fn().mockResolvedValue(undefined), waitForDrain: vi.fn().mockResolvedValue(undefined) };
     const gate = { acquire: vi.fn().mockResolvedValue(undefined) };
-    const coordinator = new RestartCoordinator({ connectedInstances, calculator, reclusterer: reclusterer as any, stopCoordinator: stopCoordinator as any, events, gate: gate as any });
+    const coordinator = new RestartCoordinator({ connectedInstances, calculator, reclusterer: reclusterer as any, stopCoordinator: stopCoordinator as any, events, gate: gate as any, standbyInstances });
     return { coordinator, connectedInstances, calculator, events, reclusterer, stopCoordinator, gate };
 }
 
@@ -242,30 +242,81 @@ describe('RestartCoordinator', () => {
         expect(errors).toEqual([expect.stringContaining('instance 1')]);
     });
 
-    it('syncStandbyRole beats the flag an instance reconnects with and reports it', async () => {
-        const { coordinator } = setup([fakeInstance(1), fakeInstance(9, false, true)]);
-        await runWith(coordinator, async ctx => ctx.transferStandby(9, 1));
+    /** Connects instances one after another, the way the Bridge does. */
+    function connect(setupResult: ReturnType<typeof setup>, ...instances: BridgeInstanceConnection[]) {
+        for (const instance of instances) {
+            setupResult.connectedInstances.set(instance.connection.id, instance);
+            setupResult.coordinator.syncStandbyRole(instance);
+        }
+    }
 
-        const newSpare = fakeInstance(1, false, false);
-        const formerSpare = fakeInstance(9, false, true);
-        const send = vi.spyOn(formerSpare.eventManager, 'send');
-        coordinator.syncStandbyRole(newSpare);
-        coordinator.syncStandbyRole(formerSpare);
+    it('syncStandbyRole keeps the first instance active and makes the next one standby', () => {
+        const context = setup([]);
+        const [a, b, c] = [fakeInstance(1), fakeInstance(2), fakeInstance(3)];
+        const send = vi.spyOn(b.eventManager, 'send');
 
-        expect(newSpare.standby).toBe(true);
-        expect(formerSpare.standby).toBe(false);
-        expect(send).toHaveBeenCalledWith({ type: 'INSTANCE_STANDBY', data: { standby: false } });
+        connect(context, a, b, c);
+
+        expect([a.standby, b.standby, c.standby]).toEqual([false, true, false]);
+        expect(send).toHaveBeenCalledWith({ type: 'INSTANCE_STANDBY', data: { standby: true } });
     });
 
-    it('syncStandbyRole reports the flag of an instance without a transferred role', () => {
-        const { coordinator } = setup([]);
-        const spare = fakeInstance(9, false, true);
-        const send = vi.spyOn(spare.eventManager, 'send');
+    it('syncStandbyRole never makes the only instance a standby', () => {
+        const context = setup([]);
+        const only = fakeInstance(1);
 
-        coordinator.syncStandbyRole(spare);
+        connect(context, only);
 
-        expect(spare.standby).toBe(true);
-        expect(send).toHaveBeenCalledWith({ type: 'INSTANCE_STANDBY', data: { standby: true } });
+        expect(only.standby).toBe(false);
+    });
+
+    it('syncStandbyRole keeps as many standbys as configured, none by default', () => {
+        const two = setup([], 3, 2);
+        const instances = [fakeInstance(1), fakeInstance(2), fakeInstance(3), fakeInstance(4)];
+        connect(two, ...instances);
+        expect(instances.map(i => i.standby)).toEqual([false, true, true, false]);
+
+        const none = setup([], 3, 0);
+        const others = [fakeInstance(1), fakeInstance(2)];
+        connect(none, ...others);
+        expect(others.map(i => i.standby)).toEqual([false, false]);
+    });
+
+    it('syncStandbyRole skips dev instances', () => {
+        const context = setup([]);
+        const [a, dev] = [fakeInstance(1), fakeInstance(2, true)];
+
+        connect(context, a, dev);
+
+        expect(dev.standby).toBe(false);
+    });
+
+    it('syncStandbyRole gives a reconnecting instance its moved role back', async () => {
+        const context = setup([]);
+        const [a, spare] = [fakeInstance(1), fakeInstance(9)];
+        connect(context, a, spare);
+        await runWith(context.coordinator, async ctx => ctx.transferStandby(9, 1));
+
+        context.connectedInstances.delete(a.connection.id);
+        const reconnected = fakeInstance(1);
+        connect(context, reconnected);
+
+        expect(reconnected.standby).toBe(true);
+        expect(spare.standby).toBe(false);
+    });
+
+    it('syncStandbyRole does not create a second standby when the old one returns', () => {
+        const context = setup([]);
+        const [a, spare, c] = [fakeInstance(1), fakeInstance(2), fakeInstance(3)];
+        connect(context, a, spare);
+        context.connectedInstances.delete(spare.connection.id);
+        connect(context, c);
+
+        const returned = fakeInstance(2);
+        connect(context, returned);
+
+        expect(c.standby).toBe(true);
+        expect(returned.standby).toBe(false);
     });
 
     it('rejects a second run while one is running', async () => {

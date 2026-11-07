@@ -59,12 +59,14 @@ export type RestartCoordinatorDeps = {
     stopCoordinator: InstanceStopCoordinator;
     events: TypedEmitter<BridgeEvents>;
     gate: IdentifyGate;
+    /** How many instances the Bridge keeps empty as standby. */
+    standbyInstances: number;
 };
 
 /** Runs one restart routine at a time against the connected instances. */
 export class RestartCoordinator {
     private _running = false;
-    /** Roles set by `transferStandby`; an instance's own `standby` flag only counts until it has an entry here. */
+    /** The role of every instance seen so far, so it survives a reconnect. Lost on a Bridge restart. */
     private readonly standbyRoles = new Map<number, boolean>();
     private readonly lastStops = new Map<number, number>();
 
@@ -77,10 +79,20 @@ export class RestartCoordinator {
         return this._running;
     }
 
-    /** A connecting instance announces its configured flag, so restore the role it held and tell it which one counts. */
+    /**
+     * Decides the role of a connecting instance: it keeps the one it held, and a new instance becomes
+     * standby while one is missing, unless it would be the only instance left to hold clusters.
+     */
     syncStandbyRole(connection: BridgeInstanceConnection): void {
-        const role = this.standbyRoles.get(connection.instanceID);
-        if (role !== undefined) connection.setStandby(role);
+        const others = this.deps.connectedInstances.values()
+            .filter(c => c !== connection && !c.dev)
+            .toArray();
+        const standbyMissing = others.filter(c => c.standby).length < this.deps.standbyInstances;
+        const role = !connection.dev && standbyMissing
+            && (this.standbyRoles.get(connection.instanceID) ?? others.some(c => !c.standby));
+
+        this.standbyRoles.set(connection.instanceID, role);
+        connection.setStandby(role);
         this.reportStandbyRole(connection);
     }
 
