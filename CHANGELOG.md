@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.0.0-pre.9
+
+### Fixed
+
+- After a resume the Bridge frees every cluster still assigned to a previous connection of the
+  instance that it did not report, and forgets an old process of it. Before, a cluster moving onto
+  an instance that was stopped through `INSTANCE_STOP` stayed `starting` on the closed connection
+  forever, because the stop removes the instance before its disconnect arrives.
+- A cluster still on a previous connection that the instance reports is taken back.
+- A cluster moving onto an instance that loses the Bridge is not reserved; its old process serves it.
+- The standby role after a resume only goes to a `ready` instance, not to one that is stopping.
+
 ## 3.0.0-pre.8 (clusters outlive a Bridge restart)
 
 Update the Bridge and all instances together to use the new option. Mixed versions keep working
