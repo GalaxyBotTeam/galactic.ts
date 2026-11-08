@@ -96,6 +96,33 @@ export class RestartCoordinator {
         this.reportStandbyRole(connection);
     }
 
+    /**
+     * After a Bridge restart the roles are gone, and an instance may come back with clusters it kept.
+     * Such an instance is no standby: it loses the role, and an empty instance takes it if one is missing.
+     * Restart routines move roles themselves, so nothing changes while one runs.
+     */
+    syncStandbyAfterResume(connection: BridgeInstanceConnection): void {
+        if (this._running) return;
+        const holdsClusters = (c: BridgeInstanceConnection) => this.deps.calculator.getClusterForConnection(c).length > 0;
+
+        if (connection.standby && holdsClusters(connection)) {
+            this.standbyRoles.set(connection.instanceID, false);
+            connection.setStandby(false);
+            this.reportStandbyRole(connection);
+        }
+
+        const instances = this.deps.connectedInstances.values().filter(c => !c.dev && c.resumed).toArray();
+        const missing = this.deps.standbyInstances - instances.filter(c => c.standby).length;
+        const candidates = instances.filter(c => !c.standby && !holdsClusters(c));
+        // At least one instance has to stay available for clusters.
+        const available = instances.filter(c => !c.standby).length;
+        for (const candidate of candidates.slice(0, Math.max(0, Math.min(missing, available - 1)))) {
+            this.standbyRoles.set(candidate.instanceID, true);
+            candidate.setStandby(true);
+            this.reportStandbyRole(candidate);
+        }
+    }
+
     private reportStandbyRole(connection: BridgeInstanceConnection): void {
         connection.eventManager.send({ type: 'INSTANCE_STANDBY', data: { standby: connection.standby } }).catch((err) => {
             this.deps.events.emit('ERROR', `Reporting the standby role to instance ${connection.instanceID} failed: ${err}`);

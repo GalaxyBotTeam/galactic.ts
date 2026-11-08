@@ -270,6 +270,31 @@ describe('RestartCoordinator', () => {
         expect(only.standby).toBe(false);
     });
 
+    it('after a Bridge restart an instance that kept clusters hands the standby role to an empty one', () => {
+        const context = setup([], 3, 1);
+        const [empty, busy] = [fakeInstance(1), fakeInstance(2)];
+        connect(context, empty, busy);
+        expect(busy.standby).toBe(true);
+
+        // The busy instance reports a cluster it kept through the restart.
+        const cluster = context.calculator.clusterList[0];
+        cluster.setConnection(busy);
+        context.coordinator.syncStandbyAfterResume(busy);
+
+        expect(busy.standby).toBe(false);
+        expect(empty.standby).toBe(true);
+    });
+
+    it('syncStandbyAfterResume leaves the only instance able to hold clusters active', () => {
+        const context = setup([], 3, 1);
+        const only = fakeInstance(1);
+        connect(context, only);
+
+        context.coordinator.syncStandbyAfterResume(only);
+
+        expect(only.standby).toBe(false);
+    });
+
     it('syncStandbyRole keeps as many standbys as configured, none by default', () => {
         const two = setup([], 3, 2);
         const instances = [fakeInstance(1), fakeInstance(2), fakeInstance(3), fakeInstance(4)];

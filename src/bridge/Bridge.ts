@@ -17,6 +17,22 @@ import { RestartCoordinator, RestartOptions, RestartRoutine, type RestartStep } 
 import { sequentialRestart } from "./restartRoutines";
 import { IdentifyGate } from "./IdentifyGate";
 import { checkShardCount, fetchGatewayInfo, type GatewayInfo } from "./GatewayInfo";
+import { ClusterResumer, type RejectedCluster } from "./ClusterResumer";
+import { DisconnectPolicy } from "../protocol/bridge";
+
+/** How long a Bridge that keeps clusters waits after its start before it starts clusters itself. */
+export const DEFAULT_RESUME_WINDOW_MS = 20 * 1000;
+
+export type BridgeOptions = {
+    /** What instances do with their clusters when they lose the Bridge. Default `{ keepClusters: false }`. Change it later with {@link Bridge.setDisconnectPolicy}. */
+    disconnectPolicy?: DisconnectPolicy;
+    /**
+     * Only while `disconnectPolicy` keeps clusters: how long after its start the Bridge waits before
+     * it starts clusters, so instances that kept theirs during a Bridge restart can report them first.
+     * Default {@link DEFAULT_RESUME_WINDOW_MS}.
+     */
+    resumeWindowMs?: number;
+};
 
 /** Composition root - wires transport (BridgeServer), business logic (ClusterReclusterer, InstanceStopCoordinator), and scheduling (ClusterScheduler) together. */
 export class Bridge {
@@ -36,9 +52,13 @@ export class Bridge {
     private readonly restartCoordinator: RestartCoordinator;
     private readonly scheduler: ClusterScheduler;
     private readonly gate = new IdentifyGate();
+    private readonly resumer: ClusterResumer;
+    private readonly resumeWindowMs: number;
+    private _disconnectPolicy: DisconnectPolicy;
+    private startedAt?: number;
     private shardCountRejected = false;
 
-    constructor(port: number, token: string, intents: GatewayIntentsString[], shardsPerCluster: number, clusterToStart: number, reclusteringTimeoutInMs: number, ignoreHeartbeatMissed?: boolean, standbyInstances = 0) {
+    constructor(port: number, token: string, intents: GatewayIntentsString[], shardsPerCluster: number, clusterToStart: number, reclusteringTimeoutInMs: number, ignoreHeartbeatMissed?: boolean, standbyInstances = 0, options: BridgeOptions = {}) {
         this.port = port;
         this.token = token;
         this.intents = intents;
@@ -46,8 +66,11 @@ export class Bridge {
         this.shardsPerCluster = shardsPerCluster;
         this.reclusteringTimeoutInMs = reclusteringTimeoutInMs;
         this.ignoreHeartbeatMissed = ignoreHeartbeatMissed || false;
+        this._disconnectPolicy = validateDisconnectPolicy(options.disconnectPolicy ?? { keepClusters: false });
+        this.resumeWindowMs = options.resumeWindowMs ?? DEFAULT_RESUME_WINDOW_MS;
 
         this.clusterCalculator = new ClusterCalculator(this.clusterToStart, this.shardsPerCluster);
+        this.resumer = new ClusterResumer(this.clusterCalculator, () => this.getTotalShards(), this.events);
         this.reclusterer = new ClusterReclusterer(this.clusterCalculator, this.token, this.intents, () => this.getTotalShards(), this.events, this.gate);
 
         this.bridgeServer = new BridgeServer(this.port, {
@@ -67,13 +90,41 @@ export class Bridge {
         this.scheduler = new ClusterScheduler({
             checkCreate: () => this.checkCreate(),
             checkRecluster: () => {
-                if (!this.restartCoordinator.running) this.reclusterer.checkRecluster(this.getEligibleInstancesForRecluster());
+                this.resumer.releaseExpired();
+                // Rebalancing around an instance that may come back with its clusters would move them twice.
+                if (this.restartCoordinator.running || this.clusterCalculator.clusterList.some(c => c.reserved)) return;
+                this.reclusterer.checkRecluster(this.getEligibleInstancesForRecluster());
             },
             heartbeat: () => this.heartbeat(),
         });
     }
 
+    public get disconnectPolicy(): DisconnectPolicy {
+        return this._disconnectPolicy;
+    }
+
+    /**
+     * Changes what instances do with their clusters when they lose the Bridge, and tells every
+     * connected instance. An instance that is disconnected right now keeps the policy it had.
+     * Switching keeping off frees every cluster the Bridge still holds for a missing instance.
+     */
+    public setDisconnectPolicy(policy: DisconnectPolicy): void {
+        this._disconnectPolicy = validateDisconnectPolicy(policy);
+        for (const connection of this.bridgeServer.connectedInstances.values()) {
+            this.sendDisconnectPolicy(connection);
+        }
+        if (!policy.keepClusters) this.resumer.releaseAll();
+    }
+
+    private sendDisconnectPolicy(connection: BridgeInstanceConnection): void {
+        if (!connection.supportsResume) return;
+        connection.eventManager.send({ type: 'INSTANCE_DISCONNECT_POLICY', data: this._disconnectPolicy }).catch((err) => {
+            this.events.emit('ERROR', `Reporting the disconnect policy to instance ${connection.instanceID} failed: ${err}`);
+        });
+    }
+
     public start(): void {
+        this.startedAt = Date.now();
         this.bridgeServer.start().catch((err) => {
             this.events.emit('ERROR', `Bridge server failed to start on port ${this.port}: ${err}`);
         });
@@ -97,6 +148,7 @@ export class Bridge {
 
     private onInstanceConnected(connection: BridgeInstanceConnection): void {
         this.restartCoordinator.syncStandbyRole(connection);
+        this.sendDisconnectPolicy(connection);
         connection.eventManager.onMessage(createBridgeMessageHandler(connection, {
             calculator: this.clusterCalculator,
             events: this.events,
@@ -111,12 +163,19 @@ export class Bridge {
             calculator: this.clusterCalculator,
             connectedInstances: this.bridgeServer.connectedInstances,
             totalShards: () => this.getTotalShards(),
+            onResume: (c, clusters) => {
+                const response = this.resumer.resume(c, clusters);
+                this.restartCoordinator.syncStandbyAfterResume(c);
+                return response;
+            },
         }));
         this.events.emit('INSTANCE_CONNECTED', connection);
     }
 
     private onInstanceDisconnected(connection: BridgeInstanceConnection, reason: string): void {
+        const reserved = this.resumer.reserve(connection, this._disconnectPolicy);
         for (const cluster of this.clusterCalculator.getClusterForConnection(connection)) {
+            if (reserved.includes(cluster)) continue;
             this.clusterCalculator.clearClusterConnection(cluster.clusterID);
         }
         for (const cluster of this.clusterCalculator.getOldClusterForConnection(connection)) {
@@ -137,12 +196,20 @@ export class Bridge {
             .filter(c => c.connectionStatus === BridgeInstanceConnectionStatus.READY)
             .filter(c => !c.dev)
             .filter(c => !c.standby)
+            .filter(c => c.resumed)
             .filter(c => c.establishedAt + this.reclusteringTimeoutInMs < Date.now())
             .toArray();
     }
 
+    /** True while a Bridge that keeps clusters gives instances time to report the clusters they kept through its restart. */
+    private get inResumeWindow(): boolean {
+        return this._disconnectPolicy.keepClusters
+            && this.startedAt !== undefined
+            && Date.now() < this.startedAt + this.resumeWindowMs;
+    }
+
     private checkCreate(): void {
-        if (this.shardCountRejected) return;
+        if (this.shardCountRejected || this.inResumeWindow) return;
 
         let cluster;
         while ((cluster = this.clusterCalculator.getNextCluster()) !== undefined) {
@@ -157,7 +224,7 @@ export class Bridge {
         this.clusterCalculator.clusterList.forEach((cluster) => {
             const { connection, connectionStatus } = cluster;
             const starting = connectionStatus === BridgeClusterConnectionStatus.STARTING;
-            if (!connection || cluster.heartbeatPending || (!starting && connectionStatus !== BridgeClusterConnectionStatus.CONNECTED)) return;
+            if (!connection || cluster.reserved || cluster.heartbeatPending || (!starting && connectionStatus !== BridgeClusterConnectionStatus.CONNECTED)) return;
 
             cluster.heartbeatPending = true;
             connection.eventManager.request<HeartbeatResponse>({
@@ -268,7 +335,22 @@ export type BridgeEvents = {
     'ERROR': (error: string) => void,
     /** Discord's `GET /gateway/bot`, read on start and before every restart routine. */
     'GATEWAY_INFO': (info: GatewayInfo) => void,
+    /** The instance holding the cluster lost the Bridge and may still run it; it stays assigned until `until` (`Infinity`: until the instance is back). */
+    'CLUSTER_RESERVED': (cluster: BridgeClusterConnection, until: number) => void,
+    /** The instance did not come back in time; the cluster is free and starts elsewhere. */
+    'CLUSTER_RESERVATION_EXPIRED': (cluster: BridgeClusterConnection) => void,
+    /** An instance reported the clusters it still runs: `kept` are taken over, `rejected` it stops. */
+    'INSTANCE_RESUMED': (client: BridgeInstanceConnection, kept: BridgeClusterConnection[], rejected: RejectedCluster[]) => void,
 };
+
+export type { RejectedCluster };
+
+function validateDisconnectPolicy(policy: DisconnectPolicy): DisconnectPolicy {
+    if (policy.keepClusters && policy.timeoutMs !== undefined && !(Number.isFinite(policy.timeoutMs) && policy.timeoutMs >= 0)) {
+        throw new Error(`disconnectPolicy.timeoutMs must be a finite number >= 0, got ${policy.timeoutMs}. Leave it out to keep clusters until the Bridge is back.`);
+    }
+    return policy;
+}
 
 /** @deprecated Renamed to {@link BridgeEvents}. */
 export type BridgeEventListeners = BridgeEvents;

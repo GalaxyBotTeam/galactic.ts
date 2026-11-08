@@ -15,15 +15,24 @@ export class BridgeInstanceConnection {
     public readonly dev: boolean = false;
     public readonly establishedAt: number = Date.now();
 
+    /**
+     * The instance reports the clusters it still runs after every connect (`INSTANCE_RESUME`) and
+     * honours a `DisconnectPolicy`. Older versions do neither.
+     */
+    public readonly supportsResume: boolean;
+
     private readonly state = createBridgeInstanceState();
     private _standby: boolean;
+    private _resumed: boolean;
 
-    constructor(instanceID: number, connection: Connection, data: unknown, dev: boolean, standby?: boolean) {
+    constructor(instanceID: number, connection: Connection, data: unknown, dev: boolean, standby?: boolean, supportsResume = false) {
         this.instanceID = instanceID;
         this.connection = connection;
         this.data = data;
         this.dev = dev || false;
         this._standby = standby || false;
+        this.supportsResume = supportsResume;
+        this._resumed = !supportsResume;
         this.transport = new NetIpcConnectionTransport(connection);
         this.eventManager = new EventManager<BridgeMessage, BridgeRequest>(this.transport);
     }
@@ -39,6 +48,18 @@ export class BridgeInstanceConnection {
 
     setStandby(standby: boolean): void {
         this._standby = standby;
+    }
+
+    /**
+     * False until the instance has reported the clusters it still runs. The Bridge gives it no new
+     * clusters before that, or it could start one the instance already runs.
+     */
+    get resumed(): boolean {
+        return this._resumed;
+    }
+
+    markResumed(): void {
+        this._resumed = true;
     }
 
     markPendingStop(): void {

@@ -1,5 +1,33 @@
 # Changelog
 
+## 3.0.0-pre.8 (clusters outlive a Bridge restart)
+
+Update the Bridge and all instances together to use the new option. Mixed versions keep working
+with the old behaviour: an older instance stops its clusters on a disconnect, and a newer instance
+stops the clusters an older Bridge cannot take over.
+
+### Added
+
+- `BridgeOptions.disconnectPolicy` (new last `Bridge` constructor argument) and
+  `Bridge.setDisconnectPolicy()`: the Bridge decides whether instances stop their clusters when they
+  lose it (`{ keepClusters: false }`, the default), keep them for `timeoutMs`, or keep them until it
+  is back (`{ keepClusters: true }`). See "Keeping clusters while the Bridge is away" in the README.
+- After every connect a `ManagedInstance` reports the clusters it still runs (`INSTANCE_RESUME`);
+  the Bridge takes over free or reserved ones and the instance stops the rest.
+- `BridgeOptions.resumeWindowMs` (default 20 seconds): while the policy keeps clusters, the Bridge
+  waits this long after its start before it starts clusters itself.
+- Bridge events `CLUSTER_RESERVED`, `CLUSTER_RESERVATION_EXPIRED`, `INSTANCE_RESUMED`; instance events
+  `INSTANCE_DISCONNECT_POLICY`, `BRIDGE_CLUSTERS_KEPT`, `INSTANCE_RESUMED`.
+
+### Changed
+
+- A `ManagedInstance` connects again 10 seconds after net-ipc gave up its own retries, and after a
+  failed first connect, instead of staying disconnected for good. It does not after the Bridge
+  stopped it.
+- The Bridge gives an instance new clusters only after it reported the ones it still runs. Instances
+  of older versions count as reported at once.
+- An instance that holds clusters after a resume loses the standby role; an empty instance takes it.
+
 ## 3.0.0-pre.7 (the Bridge picks the standby)
 
 ### Changed

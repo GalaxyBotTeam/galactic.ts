@@ -20,8 +20,9 @@ function setup(overrides: Partial<{ calculator: any; connectedInstances: Map<str
     };
     const connectedInstances = overrides.connectedInstances ?? new Map();
     const connection = {} as any;
-    const handler = createBridgeRequestHandler(connection, { calculator, connectedInstances, totalShards: () => 1 });
-    return { handler, calculator, connectedInstances, connection };
+    const onResume = vi.fn().mockReturnValue({ keep: [1] });
+    const handler = createBridgeRequestHandler(connection, { calculator, connectedInstances, totalShards: () => 1, onResume });
+    return { handler, calculator, connectedInstances, connection, onResume };
 }
 
 describe('BridgeRequestRouter', () => {
@@ -83,6 +84,14 @@ describe('BridgeRequestRouter', () => {
         const result = handler({ type: 'SELF_CHECK' }, 5000);
 
         expect(result).toEqual({ clusterList: [1, 2, 3] });
+    });
+
+    it('INSTANCE_RESUME is answered by the resumer for this connection', () => {
+        const { handler, onResume, connection } = setup();
+        const clusters = [{ id: 1, shardList: [0], totalShards: 1, running: true }];
+
+        expect(handler({ type: 'INSTANCE_RESUME', data: { clusters } }, 5000)).toEqual({ keep: [1] });
+        expect(onResume).toHaveBeenCalledWith(connection, clusters);
     });
 
     it('CLUSTER_HEARTBEAT as an incoming request is rejected (Bridge only ever sends this)', async () => {

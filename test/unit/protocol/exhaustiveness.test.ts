@@ -40,6 +40,7 @@ function handleBridgeMessage(m: BridgeMessage): string {
         case 'INSTANCE_STOP': return 'instance_stop';
         case 'INSTANCE_STOP_ACK': return 'instance_stop_ack';
         case 'INSTANCE_STANDBY': return 'instance_standby';
+        case 'INSTANCE_DISCONNECT_POLICY': return 'instance_disconnect_policy';
         default: return assertNever(m, 'handleBridgeMessage');
     }
 }
@@ -47,6 +48,7 @@ function handleBridgeMessage(m: BridgeMessage): string {
 function handleBridgeRequest(m: BridgeRequest): string {
     switch (m.type) {
         case 'SELF_CHECK': return 'self_check';
+        case 'INSTANCE_RESUME': return 'instance_resume';
         case 'CLUSTER_HEARTBEAT': return 'heartbeat';
         case 'REDIRECT_REQUEST_TO_GUILD': return 'redirect';
         case 'BROADCAST_EVAL': return 'eval';
