@@ -138,13 +138,13 @@ Typical distributed setup:
 - `sequentialRestart()` (default): drains and restarts the instances one after another.
 - `rollingReload()`: needs exactly one **standby** instance. The balancer never gives clusters to a standby. The routine restarts the empty standby first, then moves each instance's clusters onto the previously restarted instance before restarting it. Every cluster moves exactly once. The standby role follows the empty instance, so the last restarted instance is the new standby and the former one keeps its clusters.
 
-Mark the initial standby with the last `ManagedInstance` constructor argument:
+The Bridge picks the standby. Pass how many it should keep as the last `Bridge` constructor argument:
 
 ```ts
-new ManagedInstance(entryPoint, host, port, instanceID, data, execArgv, false /* dev */, undefined /* env */, true /* standby */);
+new Bridge(port, token, intents, shardsPerCluster, clusterToStart, reclusteringTimeoutInMs, false /* ignoreHeartbeatMissed */, 1 /* standbyInstances */);
 ```
 
-The flag only sets the starting point. Once a routine has moved the role, the Bridge keeps it in memory and it wins over the flag when an instance reconnects, until the Bridge restarts. A Bridge restart recreates all clusters, and the flags count again. The current role is available as `standby` on `bridge.connectedInstances` and on the `ManagedInstance`, which also emits `INSTANCE_STANDBY` on every connect and role change:
+A new instance becomes standby while one is missing, unless no other instance could hold clusters. Instances keep their role across reconnects until the Bridge restarts, which recreates all clusters and picks again. The current role is available as `standby` on `bridge.connectedInstances` and on the `ManagedInstance`, which also emits `INSTANCE_STANDBY` on every connect and role change:
 
 ```ts
 instance.on('INSTANCE_STANDBY', (standby) => console.log(standby ? 'Now the standby' : 'Active'));

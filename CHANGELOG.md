@@ -1,5 +1,33 @@
 # Changelog
 
+## 3.0.0-pre.7 (the Bridge picks the standby)
+
+### Changed
+
+- The Bridge decides which instance is the standby. Pass the number of standbys as the last
+  `Bridge` constructor argument (`standbyInstances`, default 0). A new instance becomes standby
+  while one is missing, unless no other instance could hold clusters.
+
+### Removed
+
+- The `standby` argument of `ManagedInstance` and the matching connect flag. An instance can no
+  longer choose its role. `ManagedInstance.standby` and `INSTANCE_STANDBY` still report it.
+
+## 3.0.0-pre.6 (safer restart routines)
+
+### Added
+
+- `RestartOptions.minRestartIntervalMs` (default 65 seconds, 0 turns it off): a restart waits until
+  this long after the instance last stopped. Pelican's Wings leaves a server offline if it exits
+  again within 60 seconds, so a second routine right after the first ran into `stepTimeoutMs`.
+- `RESTART_STEP` reports `{ kind: 'wait', instanceID, ms }`. Handle this kind if you switch over
+  `step.kind`.
+
+### Fixed
+
+- `Bridge.restartAll()` rejects if an instance from the start of the routine is gone at its end,
+  instead of reporting success.
+
 ## 3.0.0-pre.5 (large bot sharding, moves without downtime)
 
 Update the Bridge and all instances together: the Bridge now asks starting clusters for
