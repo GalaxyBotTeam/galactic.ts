@@ -64,6 +64,7 @@ export function createBridgeMessageHandler(connection: BridgeInstanceConnection,
             case 'CLUSTER_STOP':
             case 'CLUSTER_RECLUSTER':
             case 'INSTANCE_STOP_ACK':
+            case 'INSTANCE_DISCONNECT_POLICY':
             case 'INSTANCE_STANDBY':
                 // Bridge only ever SENDS these to instances, never receives them back.
                 return;

@@ -7,6 +7,7 @@ import { ChildProcessLifecycle } from "./ChildProcessLifecycle";
 import { SpawnParams } from "../protocol/processEnv";
 import { ProcessMessage, ProcessRequest } from "../protocol/process";
 import { ignoreUnknownMessage, rejectUnknownRequest, SerializedError } from "../protocol/shared";
+import type { DisconnectPolicy } from "../protocol/bridge";
 
 export abstract class BotInstance {
 
@@ -204,6 +205,12 @@ export type BotInstanceEvents = {
     'INSTANCE_STOP_ACK': () => void,
     'INSTANCE_STOP': () => void,
     'INSTANCE_STANDBY': (standby: boolean) => void,
+    /** The Bridge's {@link DisconnectPolicy}: on every connect and whenever it changes. */
+    'INSTANCE_DISCONNECT_POLICY': (policy: DisconnectPolicy) => void,
+    /** The Bridge is gone and these clusters keep running; they stop after `timeoutMs` unless it is back (`undefined`: no limit). */
+    'BRIDGE_CLUSTERS_KEPT': (clusterIDs: number[], timeoutMs: number | undefined) => void,
+    /** After a connect: the Bridge took over `kept`, the instance stopped `stopped`. */
+    'INSTANCE_RESUMED': (kept: number[], stopped: number[]) => void,
 
     'SELF_CHECK_SUCCESS': () => void,
     'SELF_CHECK_ERROR': (error: string) => void,

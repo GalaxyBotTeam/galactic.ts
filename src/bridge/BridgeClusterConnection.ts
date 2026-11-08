@@ -24,6 +24,13 @@ export class BridgeClusterConnection {
 
     public spawnedAt?: number;
 
+    /**
+     * Set while the instance holding this cluster is gone but may still run it (`DisconnectPolicy`):
+     * the time the Bridge gives up on it, `Infinity` for never. The cluster stays assigned meanwhile,
+     * so it is not started anywhere else, but it gets no heartbeats and serves no requests.
+     */
+    public reservedUntil?: number;
+
     constructor(clusterID: number, shardList: number[]) {
         this.clusterID = clusterID;
         this.shardList = shardList;
@@ -37,6 +44,7 @@ export class BridgeClusterConnection {
         if (connection == undefined) {
             this.state.transition(BridgeClusterConnectionStatus.DISCONNECTED);
             this.connection = undefined;
+            this.reservedUntil = undefined;
             return;
         }
 
@@ -59,10 +67,54 @@ export class BridgeClusterConnection {
     markDisconnected(): void {
         this.state.transition(BridgeClusterConnectionStatus.DISCONNECTED);
         this.connection = undefined;
+        this.reservedUntil = undefined;
+    }
+
+    get reserved(): boolean {
+        return this.reservedUntil !== undefined;
+    }
+
+    /** Keeps the cluster assigned to its instance, which lost the Bridge, until `until`. */
+    reserve(until: number): void {
+        this.reservedUntil = until;
+        this.heartbeatResponse = undefined;
+        this.resetMissedHeartbeats();
+    }
+
+    /**
+     * The instance is back and still runs the cluster: `connection` replaces the closed one.
+     * A cluster that became ready meanwhile is marked connected.
+     */
+    resume(connection: BridgeInstanceConnection, running: boolean): void {
+        this.connection = connection;
+        this.reservedUntil = undefined;
+        if (this.connectionStatus === BridgeClusterConnectionStatus.REQUESTING) {
+            this.markStarting();
+            this.spawnedAt ??= Date.now();
+        }
+        if (running && this.connectionStatus === BridgeClusterConnectionStatus.STARTING) {
+            this.markConnected();
+            this.readyAt = Date.now();
+            this.spawnedAt = undefined;
+        }
+    }
+
+    /** Takes over a cluster nobody holds, which `connection` reported as still running or starting. */
+    adopt(connection: BridgeInstanceConnection, running: boolean): void {
+        this.setConnection(connection);
+        this.markStarting();
+        this.spawnedAt = Date.now();
+        this.resetMissedHeartbeats();
+        if (running) {
+            this.markConnected();
+            this.readyAt = Date.now();
+            this.spawnedAt = undefined;
+        }
     }
 
     /** The instance that answers for this cluster: during a move the old one, until the new one is ready. */
     get servingConnection(): BridgeInstanceConnection | undefined {
+        if (this.reserved) return undefined;
         if (this.oldConnection) return this.oldConnection;
         return this.connectionStatus === BridgeClusterConnectionStatus.CONNECTED ? this.connection : undefined;
     }

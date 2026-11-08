@@ -1,13 +1,14 @@
 import { BridgeInstanceConnection } from "./BridgeInstanceConnection";
 import { ClusterCalculator } from "./ClusterCalculator";
 import { ShardingUtil } from "../domain/ShardingUtil";
-import { BridgeRequest, SelfCheckResponse } from "../protocol/bridge";
+import { BridgeRequest, ResumedCluster, ResumeResponse, SelfCheckResponse } from "../protocol/bridge";
 import { rejectUnknownRequest } from "../protocol/shared";
 
 export type BridgeRequestRouterDeps = {
     calculator: ClusterCalculator;
     connectedInstances: Map<string, BridgeInstanceConnection>;
     totalShards(): number;
+    onResume(connection: BridgeInstanceConnection, clusters: ResumedCluster[]): ResumeResponse;
 };
 
 /** Typed dispatch table replacing the old `if (m.type == 'X')` chain in Bridge.onRequest. */
@@ -46,6 +47,8 @@ export function createBridgeRequestHandler(connection: BridgeInstanceConnection,
                 };
                 return response;
             }
+            case 'INSTANCE_RESUME':
+                return deps.onResume(connection, message.data.clusters);
             case 'CLUSTER_HEARTBEAT':
                 // Bridge only ever SENDS this to instances, never receives it as a request.
                 return Promise.reject(new Error('Bridge does not handle incoming CLUSTER_HEARTBEAT requests'));

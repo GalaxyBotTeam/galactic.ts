@@ -162,6 +162,28 @@ await bridge.restartAll(rollingReload((ids, ctx) =>
 
 A failed step rejects with `RestartStepError` (no rollback). Progress is reported through the `RESTART_STEP` event.
 
+### Keeping clusters while the Bridge is away
+
+By default an instance stops all of its clusters as soon as it loses the Bridge, so a Bridge restart takes the whole bot offline. The Bridge can tell instances to keep them running instead:
+
+```ts
+new Bridge(port, token, intents, shardsPerCluster, clusterToStart, reclusteringTimeoutInMs, false, 1, {
+  disconnectPolicy: { keepClusters: true, timeoutMs: 5 * 60 * 1000 }, // leave out timeoutMs to keep them until the Bridge is back
+});
+
+bridge.setDisconnectPolicy({ keepClusters: false }); // change it at runtime, e.g. from a console command
+```
+
+- The Bridge sends its policy to every instance on connect (`INSTANCE_DISCONNECT_POLICY`); an instance keeps the last one it got.
+- After every connect the instance reports the clusters it still runs (`INSTANCE_RESUME`). The Bridge takes over the ones that are free or reserved for it and match its shard layout; the instance stops all others.
+- While the policy keeps clusters, the Bridge waits `resumeWindowMs` (default 20 seconds) after its start before it starts clusters itself, so instances can report theirs first.
+- When an instance disconnects, the Bridge keeps its clusters assigned until `timeoutMs` (plus 5 seconds) has passed: they are not started elsewhere, get no heartbeats and serve no requests. Rebalancing pauses meanwhile.
+- An instance that kept clusters through a Bridge restart is no standby; an empty instance takes the role.
+
+While the Bridge is away, nothing that goes through it works: requests to guilds on other instances, broadcast evals, the self check. The clusters themselves stay online. With `keepClusters`, the clusters of an instance that crashed start elsewhere only after `timeoutMs` - without a timeout, only once the instance is back.
+
+Events: `CLUSTER_RESERVED`, `CLUSTER_RESERVATION_EXPIRED` and `INSTANCE_RESUMED` on the Bridge; `INSTANCE_DISCONNECT_POLICY`, `BRIDGE_CLUSTERS_KEPT` and `INSTANCE_RESUMED` on the `ManagedInstance`.
+
 ### Sharding Limits
 
 On start and before every restart routine the Bridge reads `GET /gateway/bot` and emits the result as `GATEWAY_INFO`.

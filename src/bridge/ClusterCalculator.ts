@@ -161,7 +161,7 @@ export class ClusterCalculator {
         let lowestLoad = Infinity;
 
         for (const client of connectedClients.values().filter(c =>
-            c.connectionStatus === BridgeInstanceConnectionStatus.READY && !c.dev && !c.standby)) {
+            c.connectionStatus === BridgeInstanceConnectionStatus.READY && !c.dev && !c.standby && c.resumed)) {
             const clusters = this.getClusterForConnection(client);
 
             const load = clusters.length; // Assuming load is determined by the number of clusters assigned
