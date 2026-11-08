@@ -111,7 +111,10 @@ export class RestartCoordinator {
             this.reportStandbyRole(connection);
         }
 
-        const instances = this.deps.connectedInstances.values().filter(c => !c.dev && c.resumed).toArray();
+        // An instance on its way out cannot be the standby: once it is gone, none would be left.
+        const instances = this.deps.connectedInstances.values()
+            .filter(c => !c.dev && c.resumed && c.connectionStatus === BridgeInstanceConnectionStatus.READY)
+            .toArray();
         const missing = this.deps.standbyInstances - instances.filter(c => c.standby).length;
         const candidates = instances.filter(c => !c.standby && !holdsClusters(c));
         // At least one instance has to stay available for clusters.

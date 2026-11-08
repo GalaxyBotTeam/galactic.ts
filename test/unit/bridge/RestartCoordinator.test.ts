@@ -285,6 +285,22 @@ describe('RestartCoordinator', () => {
         expect(empty.standby).toBe(true);
     });
 
+    // Seen on the dev servers: the role went to an instance in the middle of its stop.
+    it('syncStandbyAfterResume never makes a stopping instance the standby', () => {
+        const context = setup([], 3, 1);
+        const [stopping, a, b] = [fakeInstance(1), fakeInstance(2), fakeInstance(3)];
+        connect(context, stopping);
+        stopping.markPendingStop();
+        context.connectedInstances.set(a.connection.id, a);
+        context.connectedInstances.set(b.connection.id, b);
+        context.calculator.clusterList[0].setConnection(a);
+
+        context.coordinator.syncStandbyAfterResume(a);
+
+        expect(stopping.standby).toBe(false);
+        expect(b.standby).toBe(true);
+    });
+
     it('syncStandbyAfterResume leaves the only instance able to hold clusters active', () => {
         const context = setup([], 3, 1);
         const only = fakeInstance(1);
