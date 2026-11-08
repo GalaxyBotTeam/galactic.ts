@@ -37,8 +37,9 @@ export class ClusterResumer {
         if (!policy.keepClusters || !connection.supportsResume) return [];
 
         const until = policy.timeoutMs === undefined ? Infinity : Date.now() + policy.timeoutMs + RESERVATION_MARGIN_MS;
+        // A cluster moving onto the lost instance is not kept: its old process still serves it.
         const reserved = this.calculator.getClusterForConnection(connection)
-            .filter(c => c.connection === connection && RESERVABLE.includes(c.connectionStatus));
+            .filter(c => c.connection === connection && RESERVABLE.includes(c.connectionStatus) && !c.oldConnection);
         for (const cluster of reserved) {
             cluster.reserve(until);
             this.events.emit('CLUSTER_RESERVED', cluster, until);
@@ -61,13 +62,20 @@ export class ClusterResumer {
     }
 
     /**
-     * Answers `INSTANCE_RESUME`. A reported cluster is taken over if it is reserved for this
-     * instance or nobody holds it, and only if its shards match the Bridge's layout. Reserved
-     * clusters the instance no longer runs are freed.
+     * Answers `INSTANCE_RESUME`. A reported cluster is taken over if it is still assigned to this
+     * instance (reserved, or left on its previous connection) or nobody holds it, and only if its
+     * shards match the Bridge's layout.
+     *
+     * The report is the whole truth about the instance: it runs nothing else. So every cluster the
+     * Bridge still has on a previous connection of this instance and that is not reported is freed.
+     * That also cleans up clusters an instance stopped through `INSTANCE_STOP` left behind: the stop
+     * removes the instance before its disconnect arrives, so they were never released.
      */
     resume(connection: BridgeInstanceConnection, reported: ResumedCluster[]): ResumeResponse {
         const kept: BridgeClusterConnection[] = [];
         const rejected: RejectedCluster[] = [];
+        const onPreviousConnection = (c: BridgeClusterConnection) =>
+            c.connection !== undefined && c.connection !== connection && c.connection.instanceID === connection.instanceID;
 
         for (const report of reported) {
             const cluster = this.calculator.clusterList.find(c => c.clusterID === report.id);
@@ -77,7 +85,7 @@ export class ClusterResumer {
                 continue;
             }
 
-            if (cluster.reserved && cluster.connection?.instanceID === connection.instanceID) {
+            if (onPreviousConnection(cluster) && RESERVABLE.includes(cluster.connectionStatus) && !cluster.oldConnection) {
                 cluster.resume(connection, report.running);
             } else if (!cluster.isUsed() && !cluster.oldConnection) {
                 cluster.adopt(connection, report.running);
@@ -89,12 +97,15 @@ export class ClusterResumer {
             kept.push(cluster);
         }
 
-        const keep = kept.map(c => c.clusterID);
         for (const cluster of this.calculator.clusterList) {
-            if (!cluster.reserved || cluster.connection?.instanceID !== connection.instanceID || keep.includes(cluster.clusterID)) continue;
+            if (cluster.oldConnection && cluster.oldConnection !== connection && cluster.oldConnection.instanceID === connection.instanceID) {
+                cluster.oldConnection = undefined;
+            }
+            if (!onPreviousConnection(cluster) || kept.includes(cluster)) continue;
             cluster.markDisconnected();
             this.events.emit('CLUSTER_STOPPED', cluster);
         }
+        const keep = kept.map(c => c.clusterID);
 
         connection.markResumed();
         this.events.emit('INSTANCE_RESUMED', connection, kept, rejected);

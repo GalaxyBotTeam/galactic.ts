@@ -196,6 +196,54 @@ describe('ClusterResumer.resume', () => {
         expect(cluster(1).isUsed()).toBe(false);
     });
 
+    // Seen on the dev servers: an INSTANCE_STOP removes the instance before its disconnect arrives,
+    // so a cluster moving onto it stayed STARTING on the closed connection forever.
+    it('frees a cluster left on a previous connection that the instance does not run', () => {
+        const { resumer, cluster } = setup();
+        const [from, stopped] = [instance(2), instance(3)];
+        running(cluster(0), from);
+        cluster(0).reclustering(stopped);
+        cluster(0).markStarting();
+
+        resumer.resume(instance(3), []);
+
+        expect(cluster(0).isUsed()).toBe(false);
+        expect(cluster(0).connection).toBeUndefined();
+        expect(cluster(0).oldConnection).toBe(from);
+    });
+
+    it('takes back a cluster left on a previous connection that the instance still runs', () => {
+        const { resumer, cluster } = setup();
+        running(cluster(0), instance(1));
+        const back = instance(1);
+
+        expect(resumer.resume(back, [report(0)])).toEqual({ keep: [0] });
+        expect(cluster(0).connection).toBe(back);
+    });
+
+    it('forgets an old process of a previous connection, the instance no longer runs it', () => {
+        const { resumer, cluster } = setup();
+        const [stopped, to] = [instance(1), instance(2)];
+        running(cluster(0), stopped);
+        cluster(0).reclustering(to);
+        cluster(0).markStarting();
+
+        resumer.resume(instance(1), []);
+
+        expect(cluster(0).oldConnection).toBeUndefined();
+        expect(cluster(0).connection).toBe(to);
+    });
+
+    it('does not reserve a cluster that is still moving away from another instance', () => {
+        const { resumer, cluster } = setup();
+        const [from, to] = [instance(1), instance(2)];
+        running(cluster(0), from);
+        cluster(0).reclustering(to);
+        cluster(0).markStarting();
+
+        expect(resumer.reserve(to, { keepClusters: true })).toEqual([]);
+    });
+
     it('leaves reservations of other instances alone', () => {
         const { resumer, cluster } = setup();
         const other = instance(2);
