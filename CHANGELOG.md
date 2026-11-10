@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.0.0
+
+First stable release of 3.0.0, with the same code as 3.0.0-pre.9. Install with
+`npm install galactic.ts`. Coming from 2.1.x, read the entries below from 3.0.0-pre.1 upwards. In
+short:
+
+- `EventManager` takes a transport instead of three callbacks. See "Migrating
+  `new EventManager(send, on, request)`" under 3.0.0-pre.1.
+- Status fields are read-only getters, and `Bridge.on()` / `BotInstance.on()` add listeners
+  instead of replacing them.
+- `Bridge.restartAll()` restarts instances through `sequentialRestart` or `rollingReload`. The
+  Bridge chooses the standby instance (`standbyInstances`).
+- Cluster starts follow `max_concurrency` (large bot sharding), and requests keep working while a
+  cluster moves (`servingConnection`).
+- Instances can keep their clusters while the Bridge restarts (`disconnectPolicy`).
+
+Update the Bridge and all instances together. Since 3.0.0-pre.5 a cluster on an older version
+crashes when the Bridge asks it for a heartbeat while it starts.
+
 ## 3.0.0-pre.9
 
 ### Fixed
