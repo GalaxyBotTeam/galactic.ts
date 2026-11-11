@@ -8,7 +8,9 @@ export type ProcessMessage =
     | { type: 'CUSTOM', data: unknown }
     | { type: 'CLUSTER_READY', id: number, guilds: number, members: number }
     | { type: 'CLUSTER_ERROR', id: number, error: SerializedError }
-    | { type: 'REDIRECT_MESSAGE_TO_GUILD', guildID: string, data: unknown };
+    | { type: 'REDIRECT_MESSAGE_TO_GUILD', guildID: string, data: unknown }
+    /** Parent to child: the cluster now handles events (`Cluster.serving`). */
+    | { type: 'CLUSTER_SERVING', serving: boolean };
 
 /**
  * Wire protocol between a parent process and the forked child, request/response side.

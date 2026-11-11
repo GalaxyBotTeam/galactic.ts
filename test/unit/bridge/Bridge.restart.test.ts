@@ -39,8 +39,8 @@ function startInstance(port: number) {
         return Promise.resolve();
     });
     // Stands in for two cluster processes the instance runs.
-    instance.clusters.set(0, { id: 0, shardList: [0], totalShards: 2, status: 'running' });
-    instance.clusters.set(1, { id: 1, shardList: [1], totalShards: 2, status: 'running' });
+    instance.clusters.set(0, { id: 0, shardList: [0], totalShards: 2, status: 'running', setServing: vi.fn().mockResolvedValue(undefined) });
+    instance.clusters.set(1, { id: 1, shardList: [1], totalShards: 2, status: 'running', setServing: vi.fn().mockResolvedValue(undefined) });
     instance.start();
     return instance;
 }

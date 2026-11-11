@@ -139,3 +139,77 @@ describe('BridgeMessageRouter', () => {
         warn.mockRestore();
     });
 });
+
+describe('BridgeMessageRouter hand-over', () => {
+    function withSend(connection: any) {
+        connection.instanceID = 2;
+        connection.eventManager = { send: vi.fn().mockResolvedValue(undefined) };
+        return connection;
+    }
+
+    it('CLUSTER_READY of a moved cluster stops the old process, then lets the new one serve', () => {
+        const cluster = fakeCluster(1) as any;
+        cluster.spawnedAt = Date.now();
+        cluster.handoverPending = true;
+        const order: string[] = [];
+        cluster.oldConnection = { eventManager: { send: vi.fn(async (m: any) => { order.push(`old:${m.type}`); }) } };
+        const { handler, connection } = setup(cluster);
+        withSend(connection).eventManager.send.mockImplementation(async (m: any) => { order.push(`new:${m.type}`); });
+
+        handler({ type: 'CLUSTER_READY', data: { id: 1 } });
+
+        expect(order).toEqual(['old:CLUSTER_STOP', 'new:CLUSTER_SERVING']);
+        expect(cluster.handoverPending).toBe(false);
+    });
+
+    it('CLUSTER_READY of a first start sends no hand-over', () => {
+        const cluster = fakeCluster(1) as any;
+        cluster.spawnedAt = Date.now();
+        const { handler, connection } = setup(cluster);
+        withSend(connection);
+
+        handler({ type: 'CLUSTER_READY', data: { id: 1 } });
+
+        expect(connection.eventManager.send).not.toHaveBeenCalled();
+    });
+
+    it('CLUSTER_STOPPED of the old process lets the new one serve before it is ready', () => {
+        const cluster = fakeCluster(1) as any;
+        cluster.oldConnection = {};
+        cluster.handoverPending = true;
+        cluster.connection = withSend({});
+        const { handler, calculator } = setup(cluster);
+        calculator.getClusterForConnection.mockReturnValue([]);
+        calculator.getOldClusterForConnection.mockReturnValue([cluster]);
+
+        handler({ type: 'CLUSTER_STOPPED', data: { id: 1 } });
+
+        expect(cluster.connection.eventManager.send).toHaveBeenCalledWith({ type: 'CLUSTER_SERVING', data: { id: 1 } });
+    });
+
+    it('CLUSTER_STOPPED of the new process drops the pending hand-over', () => {
+        const cluster = fakeCluster(1) as any;
+        cluster.handoverPending = true;
+        const { handler } = setup(cluster);
+
+        handler({ type: 'CLUSTER_STOPPED', data: { id: 1 } });
+
+        expect(cluster.handoverPending).toBe(false);
+    });
+
+    it('reports a failed CLUSTER_SERVING as ERROR', async () => {
+        const cluster = fakeCluster(1) as any;
+        cluster.spawnedAt = Date.now();
+        cluster.handoverPending = true;
+        const { handler, connection, events } = setup(cluster);
+        withSend(connection).eventManager.send.mockRejectedValue(new Error('closed'));
+        const errors: string[] = [];
+        events.on('ERROR', (e) => errors.push(e));
+
+        handler({ type: 'CLUSTER_READY', data: { id: 1 } });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(errors).toEqual([expect.stringMatching(/CLUSTER_SERVING.*cluster 1.*instance 2.*closed/)]);
+    });
+});

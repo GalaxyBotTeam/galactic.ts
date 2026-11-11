@@ -17,7 +17,7 @@ function make(resumeResponse: Promise<unknown> = Promise.resolve({ keep: [] })) 
 
 function withClusters(instance: any, ...ids: number[]) {
     for (const id of ids) {
-        instance.clusters.set(id, { id, shardList: [id], totalShards: 4, status: 'running' });
+        instance.clusters.set(id, { id, shardList: [id], totalShards: 4, status: 'running', setServing: vi.fn().mockResolvedValue(undefined) });
     }
 }
 

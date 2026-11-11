@@ -200,6 +200,28 @@ The Bridge also collects heartbeats while a cluster starts. `cluster.heartbeatRe
 
 A moving cluster keeps serving. `cluster.servingConnection` is the old instance until the new cluster is ready, and `Bridge.sendRequestToGuild` and requests between clusters follow it. `connectionStatus` is `starting` during a move as well as on a first start, so use `servingConnection` to tell whether a cluster can be reached. When the new cluster is ready, the old process stops: requests it has not answered within about 250 ms fail and can be retried.
 
+### Handling Events Once During a Move
+
+While a cluster moves, the old and the new process are connected to the same shards, and Discord sends every event to both. `cluster.serving` tells your bot which one handles them:
+
+- A cluster that starts for a move does not serve. discord.js handles `GUILD_CREATE`, `GUILD_DELETE` and member add/remove events right away and holds back all others until `clientReady`, then replays them. The old process has already handled all of these.
+- When the new process is ready, the Bridge stops the old one and hands the cluster over: the old process stops serving as soon as its stop arrives, before `onSelfDestruct` runs, and the new one starts serving.
+- If the old process or its instance is gone before that, the new process serves at once. If the old instance keeps its clusters while it is away from the Bridge (`disconnectPolicy`), the hand-over waits for the new process to be ready.
+- Every other cluster, and every cluster of a `StandaloneInstance`, serves from the start.
+
+Return early from your event handlers while the cluster does not serve:
+
+```ts
+client.on("messageCreate", (message) => {
+  if (!cluster.serving) return;
+  // ...
+});
+
+cluster.on("SERVING", (serving) => console.log(serving ? "Handling events" : "Not handling events"));
+```
+
+The processes exchange the hand-over over IPC and the Bridge, so an event that arrives in the few milliseconds of the hand-over can still reach both or neither. Deduplicate by ID where a duplicate would hurt.
+
 ## Integration with Discord.js
 
 galactic is fully compatible with the latest version of discord.js.  

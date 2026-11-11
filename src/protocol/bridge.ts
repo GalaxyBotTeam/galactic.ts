@@ -6,7 +6,10 @@ import { HeartbeatResponse } from './shared';
  * Fire-and-forget messages - no reply expected.
  */
 export type BridgeMessage =
-    | { type: 'CLUSTER_CREATE', data: { clusterID: number, instanceID: number, totalShards: number, shardList: number[], token: string, intents: GatewayIntentsString[] } }
+    /** `serving: false` for the new process of a move: it waits for `CLUSTER_SERVING`. Missing means `true`. */
+    | { type: 'CLUSTER_CREATE', data: { clusterID: number, instanceID: number, totalShards: number, shardList: number[], token: string, intents: GatewayIntentsString[], serving?: boolean } }
+    /** The new process of a move takes over: the old one is stopping or gone. */
+    | { type: 'CLUSTER_SERVING', data: { id: number } }
     | { type: 'CLUSTER_STOP', data: { id: number } }
     | { type: 'CLUSTER_RECLUSTER', data: { clusterID: number } }
     | { type: 'CLUSTER_SPAWNED', data: { id: number } }

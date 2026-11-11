@@ -22,7 +22,7 @@ export class ProcessSpawner {
                 detached: true,
             });
 
-            const clusterProcess = new ClusterProcess(params.clusterID, childProcess, params.shardList, params.totalShards);
+            const clusterProcess = new ClusterProcess(params.clusterID, childProcess, params.shardList, params.totalShards, params.serving);
 
             childProcess.stdout?.on('data', (data) => process.stdout.write(data));
             childProcess.stderr?.on('data', (data) => process.stderr.write(data));

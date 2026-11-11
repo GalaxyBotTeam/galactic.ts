@@ -11,7 +11,7 @@ import { BridgeServer } from "./BridgeServer";
 import { ClusterScheduler, HEARTBEAT_TIMEOUT_MS, MAX_MISSED_HEARTBEATS } from "./ClusterScheduler";
 import { ClusterReclusterer } from "./ClusterReclusterer";
 import { InstanceStopCoordinator } from "./InstanceStopCoordinator";
-import { createBridgeMessageHandler } from "./BridgeMessageRouter";
+import { createBridgeMessageHandler, handOverCluster } from "./BridgeMessageRouter";
 import { createBridgeRequestHandler } from "./BridgeRequestRouter";
 import { RestartCoordinator, RestartOptions, RestartRoutine, type RestartStep } from "./RestartCoordinator";
 import { sequentialRestart } from "./restartRoutines";
@@ -178,8 +178,11 @@ export class Bridge {
             if (reserved.includes(cluster)) continue;
             this.clusterCalculator.clearClusterConnection(cluster.clusterID);
         }
+        // The old process of a move keeps serving only if its instance keeps its clusters; otherwise the new one takes over now.
+        const oldProcessesStop = !this._disconnectPolicy.keepClusters || !connection.supportsResume;
         for (const cluster of this.clusterCalculator.getOldClusterForConnection(connection)) {
             cluster.oldConnection = undefined;
+            if (oldProcessesStop && cluster.connection) handOverCluster(cluster, cluster.connection, this.events);
         }
         this.events.emit('INSTANCE_DISCONNECTED', connection, reason);
     }

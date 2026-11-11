@@ -41,6 +41,8 @@ export function createBridgeMessageHandler(connection: BridgeInstanceConnection,
                         });
                         cluster.oldConnection = undefined;
                     }
+                    // After CLUSTER_STOP: the old process stops serving when that arrives, the new one starts now.
+                    handOverCluster(cluster, connection, deps.events);
                 }
                 return;
             }
@@ -49,18 +51,24 @@ export function createBridgeMessageHandler(connection: BridgeInstanceConnection,
                 const cluster = findCluster(deps.calculator, connection, message.data.id);
                 if (cluster) {
                     cluster.readyAt = undefined;
+                    cluster.handoverPending = false;
                     deps.events.emit('CLUSTER_STOPPED', cluster);
                     cluster.setConnection(undefined);
                 }
                 // The old process died during a move: nothing answers until the new one is ready.
                 const moving = deps.calculator.getOldClusterForConnection(connection).find(c => c.clusterID === message.data.id);
-                if (moving) moving.oldConnection = undefined;
+                if (moving) {
+                    moving.oldConnection = undefined;
+                    // Nobody serves now: the new process takes over at once, and handles what discord.js holds back for it.
+                    if (moving.connection) handOverCluster(moving, moving.connection, deps.events);
+                }
                 return;
             }
             case 'INSTANCE_STOP':
                 deps.onInstanceStop(connection);
                 return;
             case 'CLUSTER_CREATE':
+            case 'CLUSTER_SERVING':
             case 'CLUSTER_STOP':
             case 'CLUSTER_RECLUSTER':
             case 'INSTANCE_STOP_ACK':
@@ -72,6 +80,15 @@ export function createBridgeMessageHandler(connection: BridgeInstanceConnection,
                 ignoreUnknownMessage(message, 'BridgeMessageRouter');
         }
     };
+}
+
+/** Tells the new process of a move to serve, once per move. */
+export function handOverCluster(cluster: BridgeClusterConnection, connection: BridgeInstanceConnection, events: TypedEmitter<BridgeEvents>): void {
+    if (!cluster.handoverPending) return;
+    cluster.handoverPending = false;
+    connection.eventManager.send({ type: 'CLUSTER_SERVING', data: { id: cluster.clusterID } }).catch((err) => {
+        events.emit('ERROR', `Failed to send CLUSTER_SERVING for cluster ${cluster.clusterID} to instance ${connection.instanceID}: ${err}`);
+    });
 }
 
 function findCluster(calculator: ClusterCalculator, connection: BridgeInstanceConnection, clusterID: number): BridgeClusterConnection | undefined {

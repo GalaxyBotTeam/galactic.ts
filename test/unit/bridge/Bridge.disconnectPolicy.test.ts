@@ -151,3 +151,34 @@ describe('Bridge disconnect policy', () => {
         expect(checkRecluster).not.toHaveBeenCalled();
     });
 });
+
+describe('Bridge hand-over when the old instance of a move is lost', () => {
+    function moving(options = {}) {
+        const s = setup(options);
+        const [from, to] = [instance(1), instance(2)];
+        s.connect(from);
+        s.connect(to);
+        running(s.cluster(0), from);
+        s.cluster(0).reclustering(to);
+        s.cluster(0).markStarting();
+        s.cluster(0).handoverPending = true;
+        return { ...s, from, to };
+    }
+
+    it('lets the new process serve at once: the old one stopped with its instance', () => {
+        const { cluster, disconnect, from, to } = moving();
+
+        disconnect(from);
+
+        expect(cluster(0).oldConnection).toBeUndefined();
+        expect(to.eventManager.send).toHaveBeenCalledWith({ type: 'CLUSTER_SERVING', data: { id: 0 } });
+    });
+
+    it('waits for the new process to be ready while the old instance keeps its clusters', () => {
+        const { disconnect, from, to } = moving({ disconnectPolicy: { keepClusters: true } });
+
+        disconnect(from);
+
+        expect(to.eventManager.send).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'CLUSTER_SERVING' }));
+    });
+});

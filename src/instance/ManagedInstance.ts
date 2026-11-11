@@ -62,6 +62,9 @@ export class ManagedInstance extends BotInstance {
 
     private keepTimer?: ReturnType<typeof setTimeout>;
 
+    /** Clusters the Bridge handed over before their process had spawned; they serve once it has. */
+    private readonly serveOnSpawn = new Set<number>();
+
     private reconnectTimer?: ReturnType<typeof setTimeout>;
 
     constructor(entryPoint: string, host: string, port: number, instanceID: number, data: unknown, execArgv?: string[], dev?: boolean, env?: NodeJS.ProcessEnv) {
@@ -217,6 +220,8 @@ export class ManagedInstance extends BotInstance {
         this.eventManager.request<ResumeResponse>({ type: 'INSTANCE_RESUME', data: { clusters } }, RESUME_TIMEOUT_MS).then((response) => {
             const stopped = clusters.filter(c => !response.keep.includes(c.id)).map(c => c.id);
             this.stopReported(stopped, 'Bridge did not take the cluster over');
+            // The Bridge only takes over a cluster nothing else serves, e.g. the new process of a move whose old one is gone.
+            response.keep.forEach((id) => this.serve(id));
             this.resumed = true;
             this.events.emit('INSTANCE_RESUMED', response.keep, stopped);
         }).catch((err) => {
@@ -279,6 +284,7 @@ export class ManagedInstance extends BotInstance {
             type: 'CLUSTER_SPAWNED',
             data: { id: client.id }
         }).catch(() => {});
+        if (this.serveOnSpawn.delete(client.id)) this.handOver(client);
     }
 
     private onBridgeMessage(message: BridgeMessage): void {
@@ -288,6 +294,9 @@ export class ManagedInstance extends BotInstance {
                 return;
             case 'CLUSTER_STOP':
                 this.onClusterStop(message.data);
+                return;
+            case 'CLUSTER_SERVING':
+                this.serve(message.data.id);
                 return;
             case 'CLUSTER_RECLUSTER':
                 this.onClusterRecluster(message.data);
@@ -326,7 +335,8 @@ export class ManagedInstance extends BotInstance {
             return;
         }
 
-        this.startProcess(this.instanceID, data.clusterID, data.shardList, data.totalShards, data.token, data.intents as GatewayIntentsString[]);
+        this.serveOnSpawn.delete(data.clusterID);
+        this.startProcess(this.instanceID, data.clusterID, data.shardList, data.totalShards, data.token, data.intents as GatewayIntentsString[], data.serving ?? true);
     }
 
     private onClusterStop(data: { id: number }) {
@@ -334,6 +344,23 @@ export class ManagedInstance extends BotInstance {
         if (cluster) {
             this.killProcess(cluster, `Request to stop cluster ${data.id}`);
         }
+    }
+
+    private serve(id: number): void {
+        const cluster = this.clusters.get(id);
+        if (!cluster) {
+            // The old process of a move died before the new one spawned.
+            this.serveOnSpawn.add(id);
+            return;
+        }
+        this.handOver(cluster);
+    }
+
+    private handOver(cluster: ClusterProcess): void {
+        if (cluster.status === 'stopped') return;
+        cluster.setServing().catch((err) => {
+            this.events.emit('ERROR', `Failed to hand cluster ${cluster.id} over: ${err}`);
+        });
     }
 
     private onClusterRecluster(data: { clusterID: number }) {
