@@ -15,6 +15,7 @@ const params: SpawnParams = {
     totalShards: 12,
     token: 'real-token',
     intents: ['Guilds'],
+    serving: true,
 };
 
 const events = { onSpawned: vi.fn(), onError: vi.fn(), onExit: vi.fn() };
@@ -45,7 +46,7 @@ describe('child process env', () => {
         new ProcessSpawner('entry.js').spawn(params, events);
 
         expect(Object.keys(forkedEnv()).sort()).toEqual(
-            ['CLUSTER_ID', 'FORCE_COLOR', 'INSTANCE_ID', 'INTENTS', 'SHARD_LIST', 'TOKEN', 'TOTAL_SHARDS'],
+            ['CLUSTER_ID', 'FORCE_COLOR', 'INSTANCE_ID', 'INTENTS', 'SERVING', 'SHARD_LIST', 'TOKEN', 'TOTAL_SHARDS'],
         );
     });
 

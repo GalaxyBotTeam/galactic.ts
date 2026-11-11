@@ -255,3 +255,24 @@ describe('ClusterResumer.resume', () => {
         expect(cluster(0).reserved).toBe(true);
     });
 });
+
+describe('ClusterResumer hand-over', () => {
+    function spied(id: number) {
+        const connection = instance(id);
+        Object.defineProperty(connection, 'eventManager', { value: { send: vi.fn().mockResolvedValue(undefined) } });
+        return connection;
+    }
+
+    it('lets the new process of a move serve when the old instance is back without the old process', () => {
+        const { resumer, cluster } = setup();
+        const [stopped, to] = [instance(1), spied(2)];
+        running(cluster(0), stopped);
+        cluster(0).reclustering(to);
+        cluster(0).markStarting();
+        cluster(0).handoverPending = true;
+
+        resumer.resume(instance(1), []);
+
+        expect(to.eventManager.send).toHaveBeenCalledWith({ type: 'CLUSTER_SERVING', data: { id: 0 } });
+    });
+});

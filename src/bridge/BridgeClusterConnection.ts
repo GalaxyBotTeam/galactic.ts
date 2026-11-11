@@ -22,6 +22,9 @@ export class BridgeClusterConnection {
 
     public readyAt?: number;
 
+    /** The process on `connection` was started for a move and does not serve yet; the Bridge sends `CLUSTER_SERVING`. */
+    public handoverPending = false;
+
     public spawnedAt?: number;
 
     /**

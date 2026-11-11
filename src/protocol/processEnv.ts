@@ -13,6 +13,8 @@ export type SpawnParams = {
     totalShards: number,
     token: string,
     intents: GatewayIntentsString[],
+    /** Whether the cluster handles events from its first moment. False for the new process of a move, see `Cluster.serving`. */
+    serving: boolean,
 };
 
 export function encodeEnv(params: SpawnParams): NodeJS.ProcessEnv {
@@ -23,6 +25,7 @@ export function encodeEnv(params: SpawnParams): NodeJS.ProcessEnv {
         TOTAL_SHARDS: params.totalShards.toString(),
         TOKEN: params.token,
         INTENTS: params.intents.join(','),
+        SERVING: params.serving ? 'true' : 'false',
         FORCE_COLOR: 'true',
     };
 }
@@ -40,5 +43,7 @@ export function decodeEnv(env: NodeJS.ProcessEnv): SpawnParams {
         totalShards: Number(env.TOTAL_SHARDS),
         token: env.TOKEN,
         intents: env.INTENTS.split(',').map(i => i.trim()) as GatewayIntentsString[],
+        // Missing on a parent of an older version, which has no hand-over: the cluster serves.
+        serving: env.SERVING !== 'false',
     };
 }

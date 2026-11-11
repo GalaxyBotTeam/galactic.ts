@@ -28,15 +28,19 @@ export class Cluster<T extends Client> {
 
     private _shuttingDown = false;
 
+    private _serving: boolean;
+
     private readonly eventMap: {
         'message': ((message: unknown) => void) | undefined,
         'request': CustomRequestHandler | undefined,
         'CLUSTER_READY': (() => void) | undefined,
+        'SERVING': ((serving: boolean) => void) | undefined,
     } = {
-        message: undefined, request: undefined, CLUSTER_READY: undefined,
+        message: undefined, request: undefined, CLUSTER_READY: undefined, SERVING: undefined,
     }
 
-    constructor(instanceID: number, clusterID: number, shardList: number[], totalShards: number, token: string, intents: GatewayIntentsString[]) {
+    constructor(instanceID: number, clusterID: number, shardList: number[], totalShards: number, token: string, intents: GatewayIntentsString[], serving = true) {
+        this._serving = serving;
         this.instanceID = instanceID;
         this.clusterID = clusterID;
         this.shardList = shardList;
@@ -64,6 +68,20 @@ export class Cluster<T extends Client> {
         return this._client;
     }
 
+    /**
+     * Whether this cluster handles Discord events. While galactic moves a cluster, the old and the
+     * new process are connected to the same shards and Discord sends every event to both. Only one
+     * of them is serving: the old one until the new one is ready, then the new one. The old one
+     * stops serving as soon as it is asked to stop.
+     *
+     * Return early from your event handlers while this is `false`. The events a new process
+     * receives before the hand-over, including the ones discord.js holds back until `clientReady`
+     * and replays then, have already been handled by the old process.
+     */
+    get serving(): boolean {
+        return this._serving;
+    }
+
     set client(client: T) {
         this._client = client;
         // discord.js gives up on this close code without an error, the cluster would just never become ready.
@@ -75,7 +93,7 @@ export class Cluster<T extends Client> {
     /** Builds the Cluster for this child process from the env ProcessSpawner set (see protocol/processEnv.ts). */
     static initial<T extends Client>(): Cluster<T> {
         const params = decodeEnv(process.env);
-        return new Cluster<T>(params.instanceID, params.clusterID, params.shardList, params.totalShards, params.token, params.intents);
+        return new Cluster<T>(params.instanceID, params.clusterID, params.shardList, params.totalShards, params.token, params.intents, params.serving);
     }
 
     /** Resolves once the message was handed to the parent; rejects if the IPC channel is gone. */
@@ -105,6 +123,8 @@ export class Cluster<T extends Client> {
     private async shutdown(_reason: string): Promise<void> {
         if (this._shuttingDown) return;
         this._shuttingDown = true;
+        // Before onSelfDestruct: during a move the new process takes over right now.
+        this.setServing(false);
         if (this.onSelfDestruct) {
             await Promise.resolve(this.onSelfDestruct());
         }
@@ -113,9 +133,19 @@ export class Cluster<T extends Client> {
         }
     }
 
+    private setServing(serving: boolean): void {
+        if (this._serving === serving) return;
+        this._serving = serving;
+        this.eventMap.SERVING?.(serving);
+    }
+
     private onMessage(message: ProcessMessage): void {
         if (message.type === 'CUSTOM' && this.eventMap.message) {
             this.eventMap.message(message.data);
+        }
+        // A cluster that is shutting down never serves again.
+        if (message.type === 'CLUSTER_SERVING' && !this._shuttingDown) {
+            this.setServing(message.serving);
         }
     }
 
@@ -172,4 +202,6 @@ export type ClusterEventListeners = {
     request: CustomRequestHandler;
 
     CLUSTER_READY: () => void;
+    /** `serving` changed, see {@link Cluster.serving}. */
+    SERVING: (serving: boolean) => void;
 };

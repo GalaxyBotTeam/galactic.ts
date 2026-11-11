@@ -118,3 +118,29 @@ describe('ClusterReclusterer', () => {
         expect(calculator.clusterList[0].oldConnection).toBeUndefined();
     });
 });
+
+describe('ClusterReclusterer serving', () => {
+    it('starts a first cluster serving', () => {
+        const { calculator, reclusterer } = setup(1, 1);
+        const instance = fakeInstance(1);
+
+        reclusterer.createCluster(instance, calculator.clusterList[0]);
+
+        expect(instance.eventManager.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'CLUSTER_CREATE', data: expect.objectContaining({ serving: true }) }));
+        expect(calculator.clusterList[0].handoverPending).toBe(false);
+    });
+
+    it('starts the new process of a move without serving, the old one serves until the hand-over', () => {
+        const { calculator, reclusterer } = setup(1, 1);
+        const [from, to] = [fakeInstance(1), fakeInstance(2)];
+        const cluster = calculator.clusterList[0];
+        cluster.setConnection(from);
+        cluster.markStarting();
+        cluster.markConnected();
+
+        reclusterer.moveCluster(to, cluster);
+
+        expect(to.eventManager.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'CLUSTER_CREATE', data: expect.objectContaining({ serving: false }) }));
+        expect(cluster.handoverPending).toBe(true);
+    });
+});

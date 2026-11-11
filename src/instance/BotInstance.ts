@@ -28,8 +28,8 @@ export abstract class BotInstance {
         this.lifecycle = new ChildProcessLifecycle(this.events);
     }
 
-    protected startProcess(instanceID: number, clusterID: number, shardList: number[], totalShards: number, token: string, intents: GatewayIntentsString[]): void {
-        const params: SpawnParams = { instanceID, clusterID, shardList, totalShards, token, intents };
+    protected startProcess(instanceID: number, clusterID: number, shardList: number[], totalShards: number, token: string, intents: GatewayIntentsString[], serving = true): void {
+        const params: SpawnParams = { instanceID, clusterID, shardList, totalShards, token, intents, serving };
 
         this.spawner.spawn(params, {
             onSpawned: (cp) => {
@@ -104,6 +104,9 @@ export abstract class BotInstance {
                 }
                 return;
             }
+            case 'CLUSTER_SERVING':
+                // A parent only ever SENDS this to a child.
+                return;
             default:
                 ignoreUnknownMessage(message, 'BotInstance.onMessage');
         }

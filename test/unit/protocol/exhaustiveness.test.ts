@@ -14,6 +14,7 @@ function handleProcessMessage(m: ProcessMessage): string {
         case 'CLUSTER_READY': return 'ready';
         case 'CLUSTER_ERROR': return 'error';
         case 'REDIRECT_MESSAGE_TO_GUILD': return 'redirect';
+        case 'CLUSTER_SERVING': return 'serving';
         default: return assertNever(m, 'handleProcessMessage');
     }
 }
@@ -33,6 +34,7 @@ function handleBridgeMessage(m: BridgeMessage): string {
     switch (m.type) {
         case 'CLUSTER_CREATE': return 'create';
         case 'CLUSTER_STOP': return 'stop';
+        case 'CLUSTER_SERVING': return 'serving';
         case 'CLUSTER_RECLUSTER': return 'recluster';
         case 'CLUSTER_SPAWNED': return 'spawned';
         case 'CLUSTER_READY': return 'ready';

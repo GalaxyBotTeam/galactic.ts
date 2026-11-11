@@ -21,6 +21,8 @@ export class ClusterReclusterer {
     createCluster(connection: BridgeInstanceConnection, cluster: BridgeClusterConnection, recluster = false): void {
         cluster.resetMissedHeartbeats();
         cluster.heartbeatResponse = undefined;
+        // During a move the old process serves until the new one is ready.
+        cluster.handoverPending = recluster;
 
         if (!recluster) {
             cluster.setConnection(connection);
@@ -43,6 +45,7 @@ export class ClusterReclusterer {
                 shardList: cluster.shardList,
                 token: this.token,
                 intents: this.intents,
+                serving: !recluster,
             },
         }).catch((err) => {
             // The connection will drop and its disconnect handler frees the cluster again.

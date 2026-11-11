@@ -5,6 +5,7 @@ import { BridgeClusterConnectionStatus } from "../domain/BridgeClusterState";
 import { TypedEmitter } from "../general/TypedEmitter";
 import { DisconnectPolicy, ResumedCluster, ResumeResponse } from "../protocol/bridge";
 import type { BridgeEvents } from "./Bridge";
+import { handOverCluster } from "./BridgeMessageRouter";
 
 /**
  * The Bridge waits this much longer than the instance before it gives up on a reserved cluster,
@@ -99,7 +100,9 @@ export class ClusterResumer {
 
         for (const cluster of this.calculator.clusterList) {
             if (cluster.oldConnection && cluster.oldConnection !== connection && cluster.oldConnection.instanceID === connection.instanceID) {
+                // The old process of the move is gone or rejected above: the new one takes over.
                 cluster.oldConnection = undefined;
+                if (cluster.connection) handOverCluster(cluster, cluster.connection, this.events);
             }
             if (!onPreviousConnection(cluster) || kept.includes(cluster)) continue;
             cluster.markDisconnected();

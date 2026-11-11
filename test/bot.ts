@@ -43,6 +43,16 @@ cluster.onSelfDestruct = async () => {
      console.log(`[Cluster ${cluster.clusterID}] Discord client destroyed`);
 };
 
+// Only one process of a moving cluster handles events.
+client.on('messageCreate', (message) => {
+     if (!cluster.serving) return;
+     if (message.content === '!cluster') message.reply(`Cluster ${cluster.clusterID} on instance ${cluster.instanceID}`).catch(() => {});
+});
+
+cluster.on('SERVING', (serving) => {
+     console.log(`[Cluster ${cluster.clusterID}] ${serving ? 'Serving' : 'Not serving'}`);
+});
+
 cluster.on('message', (message) => {
 
 })

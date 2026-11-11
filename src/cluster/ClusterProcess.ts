@@ -16,7 +16,10 @@ export class ClusterProcess {
 
     private readonly state = createClusterProcessState();
 
-    constructor(id: number, child: ChildProcess, shardList: number[], totalShards: number) {
+    private _serving: boolean;
+
+    constructor(id: number, child: ChildProcess, shardList: number[], totalShards: number, serving = true) {
+        this._serving = serving;
         this.id = id;
         this.child = child;
         this.shardList = shardList;
@@ -44,6 +47,18 @@ export class ClusterProcess {
     markStopped(): void {
         if (this.state.current === 'stopped') return;
         this.state.transition('stopped');
+    }
+
+    /** Whether the cluster handles events. False for the new process of a move until the hand-over. */
+    get serving(): boolean {
+        return this._serving;
+    }
+
+    /** Hands the cluster over: from now on it handles events. Idempotent. */
+    setServing(): Promise<void> {
+        if (this._serving) return Promise.resolve();
+        this._serving = true;
+        return this.eventManager.send({ type: 'CLUSTER_SERVING', serving: true });
     }
 
     /** Resolves once the message was handed to the IPC channel; rejects if the child is gone. */
