@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased (events are handled once during a move)
+
+Update the Bridge and all instances together. An instance of an older version logs the new
+`CLUSTER_SERVING` message as unknown, and its clusters keep handling every event.
+
+### Added
+
+- `Cluster.serving` and the cluster event `SERVING`: while a cluster moves, only one of its two
+  processes serves. The new process starts without serving and takes over when it is ready; the
+  old one stops serving as soon as it is asked to stop, before `onSelfDestruct`. Return early from
+  your event handlers while `serving` is `false`. See "Handling Events Once During a Move" in the README.
+- `ClusterProcess.serving` and `ClusterProcess.setServing()` on the instance side.
+- Bridge message `CLUSTER_SERVING` and the `serving` field of `CLUSTER_CREATE`; `SERVING` in the
+  environment of a cluster process.
+
+### Fixed
+
+- A bot that checks `cluster.serving` no longer handles events twice while galactic moves a
+  cluster (`rollingReload`, draining, rebalancing, `Bridge.moveCluster`). Before, both processes
+  handled member joins and leaves during the whole start of the new process, and the new process
+  replayed every other event discord.js held back until `clientReady`, which the old one had
+  already handled.
+
 ## 3.0.0
 
 First stable release of 3.0.0, with the same code as 3.0.0-pre.9. Install with
