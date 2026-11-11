@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (events are handled once during a move)
+## 3.1.0 (events are handled once during a move)
 
 Update the Bridge and all instances together. An instance of an older version logs the new
 `CLUSTER_SERVING` message as unknown, and its clusters keep handling every event.
